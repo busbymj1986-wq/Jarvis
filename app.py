@@ -2,7 +2,10 @@ from flask import Flask, request, jsonify
 from datetime import datetime
 import os
 
+from vigi_bridge import init_vigi
+
 app = Flask(__name__)
+init_vigi(app)
 
 state = {
     "status": "Active",

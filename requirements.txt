@@ -1,2 +1,5 @@
 Flask==3.0.3
 gunicorn==22.0.0
+requests==2.34.2
+anthropic==2.3.0
+tzdata==2026.6

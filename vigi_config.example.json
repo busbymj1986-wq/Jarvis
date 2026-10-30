@@ -1,0 +1,52 @@
+{
+  "timezone": "Africa/Johannesburg",
+  "public_url": "",
+  "retention_days": 30,
+  "nvr": {
+    "host": "192.168.1.50",
+    "username": "admin",
+    "https_port": 443,
+    "rtsp_port": 554,
+    "verify_tls": false
+  },
+  "clips": {
+    "enabled": true,
+    "for": "alarms",
+    "pre_seconds": 5,
+    "post_seconds": 10,
+    "stream": 2,
+    "source": "replay",
+    "transcode": false
+  },
+  "ai": {
+    "enabled": "auto",
+    "model": "claude-opus-5-5",
+    "effort": "low",
+    "mode": "verify",
+    "on_error": "alarm",
+    "skip_labels": ["alarm_input", "tampering"],
+    "site_notes": "Two dogs roam the yard at night. The gardener works Tuesdays and Thursdays 08:00-16:00."
+  },
+  "rules": {
+    "mode": "schedule",
+    "schedule": [
+      {"start": "18:00", "end": "06:00"},
+      {"start": "08:00", "end": "17:00", "days": ["mon", "tue", "wed", "thu", "fri"]}
+    ],
+    "alarm_events": ["intrusion", "line_crossing", "region_entering", "person", "alarm_input", "tampering"],
+    "channels": {
+      "1": {"name": "Front Gate", "always_armed": true},
+      "2": {"name": "Driveway", "alarm_events": ["intrusion", "line_crossing_person"]},
+      "3": {"name": "Back Yard"},
+      "4": {"name": "Street View", "enabled": false}
+    },
+    "cooldown_seconds": 120,
+    "escalate": {"enabled": true, "window_seconds": 60, "min_events": 3, "min_channels": 2}
+  },
+  "event_labels": {},
+  "notify": {
+    "webhook": {"url": "", "headers": {}, "include_snapshot": false},
+    "email": {"port": 587, "starttls": true}
+  },
+  "report": {"daily_at": "07:00"}
+}
