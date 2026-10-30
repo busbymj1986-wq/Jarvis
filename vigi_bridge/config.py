@@ -46,8 +46,10 @@ DEFAULTS = {
         "source": "replay",
         # Seconds to wait after the post-roll before asking the NVR for replay.
         "ready_delay_seconds": 15,
-        # Re-encode to H.264 so phones/Telegram can play H.265 cameras.
-        "transcode": False,
+        # Re-encode to H.264 baseline so phones can play H.265 / High-profile
+        # camera streams. "auto" re-encodes when WhatsApp is set up, since
+        # WhatsApp only accepts H.264 without B-frames.
+        "transcode": "auto",
     },
     "ai": {
         # true / false / "auto" (on when ANTHROPIC_API_KEY is set).
@@ -94,6 +96,29 @@ DEFAULTS = {
     # Extra NVR type codes -> label, e.g. {"1:6": "region_entering"}.
     "event_labels": {},
     "notify": {
+        # WhatsApp Cloud API (Meta). Free-form messages only reach people who
+        # messaged the business number in the last 24 hours; outside that the
+        # bridge uses the approved templates named here.
+        "whatsapp": {
+            "token": "",
+            "phone_number_id": "",
+            # Numbers that get alerts and may send commands, international
+            # format, e.g. "27821234567".
+            "recipients": [],
+            "api_version": "v23.0",
+            # Webhook for incoming commands: verify token you choose, and the
+            # Meta app secret used to check each request's signature.
+            "verify_token": "",
+            "app_secret": "",
+            "commands": True,
+            "language": "en",
+            # IMAGE header; body {{1}} camera, {{2}} event and time, {{3}} details.
+            "alarm_template": "",
+            # VIDEO header; body {{1}} camera, {{2}} event and time.
+            "clip_template": "",
+            # Body {{1}} period, {{2}} one-line summary.
+            "report_template": "",
+        },
         "webhook": {"url": "", "headers": {}, "include_snapshot": False},
         "telegram": {"bot_token": "", "chat_id": ""},
         "email": {
@@ -126,6 +151,14 @@ ENV_MAP = {
     "VIGI_ARM_MODE": ("rules", "mode"),
     "VIGI_AI_MODEL": ("ai", "model"),
     "VIGI_WEBHOOK_URL": ("notify", "webhook", "url"),
+    "WHATSAPP_TOKEN": ("notify", "whatsapp", "token"),
+    "WHATSAPP_PHONE_NUMBER_ID": ("notify", "whatsapp", "phone_number_id"),
+    "WHATSAPP_TO": ("notify", "whatsapp", "recipients"),
+    "WHATSAPP_VERIFY_TOKEN": ("notify", "whatsapp", "verify_token"),
+    "WHATSAPP_APP_SECRET": ("notify", "whatsapp", "app_secret"),
+    "WHATSAPP_ALARM_TEMPLATE": ("notify", "whatsapp", "alarm_template"),
+    "WHATSAPP_CLIP_TEMPLATE": ("notify", "whatsapp", "clip_template"),
+    "WHATSAPP_REPORT_TEMPLATE": ("notify", "whatsapp", "report_template"),
     "TELEGRAM_BOT_TOKEN": ("notify", "telegram", "bot_token"),
     "TELEGRAM_CHAT_ID": ("notify", "telegram", "chat_id"),
     "SMTP_HOST": ("notify", "email", "host"),
@@ -147,8 +180,13 @@ def deep_merge(base: dict, override: dict) -> dict:
     return out
 
 
+def whatsapp_configured(cfg: dict) -> bool:
+    wa = cfg["notify"]["whatsapp"]
+    return bool(wa.get("token") and wa.get("phone_number_id") and wa.get("recipients"))
+
+
 def _coerce(path, value: str):
-    if path == ("notify", "email", "to"):
+    if path in (("notify", "email", "to"), ("notify", "whatsapp", "recipients")):
         return [v.strip() for v in value.split(",") if v.strip()]
     if path == ("notify", "email", "port"):
         return int(value)

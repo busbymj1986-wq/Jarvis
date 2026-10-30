@@ -41,6 +41,12 @@ class FakeNvr:
         self.snapshot_calls.append(channel)
         return self.snapshot_bytes
 
+    def record_live(self, channel, seconds, out_path):
+        self.clip_calls.append((channel, seconds))
+        with open(out_path, "wb") as f:
+            f.write(b"live-mp4-bytes")
+        return self.clip_ok
+
     def record_clip(self, channel, when, out_path):
         self.clip_calls.append((channel, when))
         if not self.clip_ok:

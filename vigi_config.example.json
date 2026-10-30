@@ -16,7 +16,7 @@
     "post_seconds": 10,
     "stream": 2,
     "source": "replay",
-    "transcode": false
+    "transcode": "auto"
   },
   "ai": {
     "enabled": "auto",
@@ -45,6 +45,13 @@
   },
   "event_labels": {},
   "notify": {
+    "whatsapp": {
+      "language": "en",
+      "alarm_template": "security_alarm",
+      "clip_template": "security_clip",
+      "report_template": "security_report",
+      "commands": true
+    },
     "webhook": {"url": "", "headers": {}, "include_snapshot": false},
     "email": {"port": 587, "starttls": true}
   },

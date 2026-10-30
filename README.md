@@ -4,7 +4,9 @@ Flask backend for Jarvis. Besides the original support-call demo endpoints
 (`/api/status`, `/api/next`, `/api/reset`, `/api/sms`, `/api/voice`), it now
 includes a **VIGI NVR bridge**: a bolt-on that a TP-Link VIGI NVR reports to,
 which keeps snapshots and short clips, decides when an event is worth an alarm,
-alerts you, and produces reports.
+and alerts you. **Everything works through WhatsApp:** alarms arrive with the
+photo and then the clip, and you reply to arm, disarm, ask for a live photo or
+clip, or get a report. Telegram, email and a webhook are also available.
 
 ## VIGI bridge: how it works
 
@@ -15,10 +17,12 @@ VIGI NVR --(Alarm Server push: event JSON + snapshot)--> POST /vigi/alarm/<token
    2. rules: armed? which camera? which event type? escalation?   -> logged / ignored
    3. cooldown: already alerted for this camera recently?         -> grouped
    4. AI check (optional): Claude looks at the snapshot           -> dismissed
-   5. ALARM: Telegram / email / webhook with the snapshot
+   5. ALARM: WhatsApp (and/or Telegram / email / webhook) with the snapshot
    6. clip: pull 5 s before -> 10 s after from the NVR over RTSP, send it as a follow-up
                                                               |
                          reports: /vigi/report, /vigi/events.csv, daily summary at 07:00
+
+You on WhatsApp --"disarm" / "snap 2" / "report"--> POST /vigi/whatsapp/webhook --> reply
 ```
 
 Every event ends in one of these states, and the reason is stored with it:
@@ -50,6 +54,92 @@ Every event ends in one of these states, and the reason is stored with it:
    one-line description ("One person in dark clothing climbing the front gate").
    Wired sensor inputs and tampering skip the check. If the AI call fails, the
    alarm still goes out (`on_error: "alarm"`).
+
+## WhatsApp
+
+### What you get
+
+An alarm arrives as the snapshot with a caption, for example "🚨 ALARM - Front
+Gate / Intrusion at Fri 30 Oct 23:00:05 / One person climbing the gate", and the
+video clip follows about 30 seconds later. Each number listed in `WHATSAPP_TO`
+gets it. You can also send these to the bot:
+
+| Send | Reply |
+|---|---|
+| `status` | Armed or not, today's events and alarms |
+| `arm` / `disarm` / `auto` | Arm, disarm, or go back to the schedule |
+| `snap 2` | Live photo from camera 2 |
+| `clip 2` (or `clip 2 20`) | 10 s (up to 30 s) live clip from camera 2 |
+| `alarms` | The last 5 alarms with their event numbers |
+| `event 12` | Photo, details and clip of event 12 |
+| `report` / `report 7d` | Summary for the last 24 hours / week |
+| anything else | The command list |
+
+Only numbers in `WHATSAPP_TO` are obeyed. Messages from anyone else are
+ignored and logged, and every incoming request must carry Meta's signature.
+
+### The 24-hour rule (why templates are needed)
+
+WhatsApp only lets a business send ordinary messages to someone who has
+messaged it in the last 24 hours. The bridge keeps track of that for each
+recipient:
+
+- **Inside the window** (you've messaged the bot today): alarms, clips and
+  reports arrive as normal messages.
+- **Outside the window**: the bridge sends **templates**, message formats Meta
+  approved in advance. Without an approved `alarm_template`, an alarm only
+  reaches people who messaged the bot that day. The bridge logs a warning about
+  this at startup.
+
+Create these three templates in WhatsApp Manager (*Message templates > Create*,
+category **Utility**, language **English**). Meta needs sample values for each
+`{{n}}`, and won't accept a body that starts or ends with a variable, so keep
+the wording around them.
+
+| Name (env var) | Header | Body |
+|---|---|---|
+| `security_alarm` (`WHATSAPP_ALARM_TEMPLATE`) | Image | `🚨 Security alarm at {{1}}: {{2}}. Details: {{3}}. Reply HELP for commands.` |
+| `security_clip` (`WHATSAPP_CLIP_TEMPLATE`) | Video | `🎥 Video from {{1}}: {{2}}. Reply HELP for commands.` |
+| `security_report` (`WHATSAPP_REPORT_TEMPLATE`) | none | `📋 {{1}}: {{2}} Reply REPORT for the full report.` |
+
+The bridge fills in {{1}} camera, {{2}} event and time, and {{3}} the AI
+description or the rule that fired. For the report, {{1}} is the period and
+{{2}} the one-line totals. If your templates use another language code, set
+`notify.whatsapp.language`, e.g. `en_US`.
+
+**Cost:** replies inside the 24-hour window are free. Meta charges per template
+message at its utility rate, which depends on the recipient's country, so
+check Meta's current WhatsApp pricing.
+
+### Setting up the WhatsApp side (Meta)
+
+1. At developers.facebook.com, create an app (type *Business*) and add the
+   **WhatsApp** product. Add the business phone number the bot will use. It
+   must not already be registered on the WhatsApp app. Meta's free test number
+   works for trying it out, but then each recipient must be added to its
+   allowed list.
+2. From *WhatsApp > API Setup*, copy the **Phone number ID** into `WHATSAPP_PHONE_NUMBER_ID`.
+3. Make a **permanent token**. The one on the API Setup page expires within a
+   day. Go to *Business settings > Users > System users*, add a system user,
+   assign it your app and WhatsApp account, and generate a token with
+   `whatsapp_business_messaging` and `whatsapp_business_management`. Put it
+   in `WHATSAPP_TOKEN`.
+4. Copy the **App secret** from *App settings > Basic* into `WHATSAPP_APP_SECRET`.
+5. For commands, set the webhook under *WhatsApp > Configuration*:
+   - Callback URL: `https://<your bridge>/vigi/whatsapp/webhook`
+   - Verify token: any phrase you choose, also put in `WHATSAPP_VERIFY_TOKEN`
+   - Then subscribe to the **messages** field.
+
+   Meta has to reach this URL over HTTPS. If the bridge runs on your home or
+   office network, publish just that path through a tunnel such as Cloudflare
+   Tunnel. Alerts going out work without the webhook (via templates), but
+   commands need it.
+6. Create the templates above and wait for approval.
+7. Each person in `WHATSAPP_TO` sends **help** to the bot once to check it answers.
+
+Clips are re-encoded to H.264 baseline, at most 1280 px wide, whenever WhatsApp
+is set up. WhatsApp won't play the H.265 or High-profile streams most NVRs
+record, and video must stay under 16 MB.
 
 ## Setting up the NVR
 
@@ -99,7 +189,10 @@ docker build -t jarvis .
 docker run -d --name jarvis --restart unless-stopped -p 8080:8080 -v jarvis-data:/data \
   -e VIGI_TIMEZONE=Africa/Johannesburg -e VIGI_INGEST_TOKEN=change-me -e VIGI_API_KEY=change-me-too \
   -e VIGI_NVR_HOST=192.168.1.50 -e VIGI_NVR_PASSWORD=... \
-  -e TELEGRAM_BOT_TOKEN=... -e TELEGRAM_CHAT_ID=... \
+  -e WHATSAPP_TOKEN=... -e WHATSAPP_PHONE_NUMBER_ID=... -e WHATSAPP_TO=27821234567,27831234567 \
+  -e WHATSAPP_APP_SECRET=... -e WHATSAPP_VERIFY_TOKEN=... \
+  -e WHATSAPP_ALARM_TEMPLATE=security_alarm -e WHATSAPP_CLIP_TEMPLATE=security_clip \
+  -e WHATSAPP_REPORT_TEMPLATE=security_report \
   -e ANTHROPIC_API_KEY=... \
   jarvis
 ```
@@ -133,6 +226,10 @@ JSON file pointed to by `VIGI_CONFIG`. See `vigi_config.example.json`, and
 | `VIGI_CONFIG` | Path to the JSON config file |
 | `VIGI_DATA_DIR` | Where the database, snapshots and clips go (default `vigi_data`) |
 | `VIGI_PUBLIC_URL` | Base URL used for links in alerts |
+| `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID` | WhatsApp Cloud API credentials (see the WhatsApp section) |
+| `WHATSAPP_TO` | Comma-separated numbers in international format (`27821234567`) that get alerts and may send commands |
+| `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN` | Check and verify the incoming-commands webhook |
+| `WHATSAPP_ALARM_TEMPLATE`, `WHATSAPP_CLIP_TEMPLATE`, `WHATSAPP_REPORT_TEMPLATE` | Approved template names, used outside the 24-hour window |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Telegram alerts: photo, then clip |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `ALERT_EMAIL_FROM`, `ALERT_EMAIL_TO` | Email alerts and reports (`ALERT_EMAIL_TO` is comma-separated) |
 | `VIGI_WEBHOOK_URL` | POSTs JSON for alarms, clips and reports, e.g. to a control room or home automation |
@@ -152,11 +249,12 @@ describes) or `off`. `ai.site_notes` tells the model what's normal at your site
 
 ## API
 
-All endpoints except `/vigi/alarm` need the API key.
+All endpoints except `/vigi/alarm` and the WhatsApp webhook need the API key.
 
 | Method | Path | |
 |---|---|---|
 | POST | `/vigi/alarm/<token>` | NVR Alarm Server target (JSON or multipart) |
+| GET, POST | `/vigi/whatsapp/webhook` | Meta's webhook for incoming WhatsApp commands (verify token and signature checked, no API key) |
 | GET | `/vigi/status` | Armed state, today's counts, what's configured |
 | POST | `/vigi/arm` | `{"mode": "armed" \| "disarmed" \| "schedule"}` |
 | GET | `/vigi/events` | Filters: `status`, `channel`, `label`, `period=24h\|7d\|30d`, `from`, `to`, `limit`, `offset` |

@@ -22,6 +22,8 @@ import requests
 import urllib3
 from requests.auth import HTTPDigestAuth
 
+from .config import whatsapp_configured
+
 log = logging.getLogger("vigi.nvr")
 
 AUTH_BACKOFF_SECONDS = 30 * 60
@@ -31,6 +33,8 @@ class NvrClient:
     def __init__(self, cfg: dict):
         self.cfg = cfg["nvr"]
         self.clips = cfg["clips"]
+        transcode = self.clips.get("transcode", "auto")
+        self.transcode = whatsapp_configured(cfg) if transcode == "auto" else bool(transcode)
         self._blocked_until = 0.0
         if not self.cfg.get("verify_tls", False):
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -102,8 +106,11 @@ class NvrClient:
         if source.startswith("rtsp://"):
             cmd += ["-rtsp_transport", "tcp"]
         cmd += ["-i", source, "-t", f"{seconds:.0f}"]
-        if self.clips.get("transcode"):
-            cmd += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "28", "-pix_fmt", "yuv420p"]
+        if self.transcode:
+            # Baseline profile has no B-frames, which Android WhatsApp needs;
+            # capping the width keeps clips well under WhatsApp's 16 MB limit.
+            cmd += ["-vf", "scale='min(1280,iw)':-2", "-c:v", "libx264", "-preset", "veryfast",
+                    "-crf", "28", "-profile:v", "baseline", "-pix_fmt", "yuv420p"]
         else:
             cmd += ["-c:v", "copy"]
         # NVR audio is usually G.711, which MP4 cannot carry; alerts don't need it.
@@ -149,3 +156,8 @@ class NvrClient:
             datetime.fromtimestamp(end, tz=timezone.utc),
         )
         return self.run_ffmpeg(url, pre + post, out_path)
+
+    def record_live(self, channel: int, seconds: float, out_path: str) -> bool:
+        if not self._usable():
+            return False
+        return self.run_ffmpeg(self.live_url(channel, self.clips.get("stream", 2)), seconds, out_path)

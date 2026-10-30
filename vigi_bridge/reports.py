@@ -4,11 +4,13 @@ from __future__ import annotations
 import csv
 import io
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timedelta
 from html import escape
 from zoneinfo import ZoneInfo
 
 from .store import from_iso, iso
+
+PERIODS = {"24h": timedelta(hours=24), "7d": timedelta(days=7), "30d": timedelta(days=30)}
 
 
 def _local(text: str, tz: ZoneInfo) -> datetime:

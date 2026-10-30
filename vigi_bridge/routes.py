@@ -4,18 +4,16 @@ from __future__ import annotations
 import hmac
 import json
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from functools import wraps
 
 from flask import Blueprint, Response, abort, current_app, jsonify, request, send_file
 
-from .reports import render_csv, render_html, render_text, report_title
+from .reports import PERIODS, render_csv, render_html, render_text, report_title
 
 log = logging.getLogger("vigi.http")
 
 bp = Blueprint("vigi", __name__, url_prefix="/vigi")
-
-PERIODS = {"24h": timedelta(hours=24), "7d": timedelta(days=7), "30d": timedelta(days=30)}
 
 
 def bridge():
@@ -71,6 +69,36 @@ def alarm(token=None):
         log.warning("unreadable alarm push from %s: %s", request.remote_addr, exc)
         return jsonify({"ok": False, "error": f"could not parse alarm message: {exc}"}), 400
     return jsonify({"ok": True, "events": ids})
+
+
+@bp.get("/whatsapp/webhook")
+def whatsapp_verify():
+    """Meta's one-off check when the webhook URL is saved in the app dashboard."""
+    expected = bridge().cfg["notify"]["whatsapp"].get("verify_token")
+    if (request.args.get("hub.mode") == "subscribe" and expected
+            and _matches(request.args.get("hub.verify_token"), expected)):
+        return Response(request.args.get("hub.challenge", ""), mimetype="text/plain")
+    return Response("forbidden", status=403, mimetype="text/plain")
+
+
+@bp.post("/whatsapp/webhook")
+def whatsapp_incoming():
+    bot = bridge().whatsapp
+    if bot is None:
+        return jsonify({"error": "WhatsApp is not configured"}), 404
+    if not bot.cfg.get("app_secret"):
+        log.warning("WhatsApp webhook called but WHATSAPP_APP_SECRET is not set; ignoring it")
+        return jsonify({"error": "set WHATSAPP_APP_SECRET to accept WhatsApp messages"}), 403
+    raw = request.get_data(cache=True)
+    if not bot.verify_signature(raw, request.headers.get("X-Hub-Signature-256")):
+        log.warning("rejected WhatsApp webhook with a bad signature from %s", request.remote_addr)
+        return jsonify({"error": "bad signature"}), 401
+    try:
+        payload = json.loads(raw)
+    except ValueError:
+        return jsonify({"error": "invalid JSON"}), 400
+    bot.dispatch(payload)
+    return jsonify({"ok": True})
 
 
 @bp.get("/status")

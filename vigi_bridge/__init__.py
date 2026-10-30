@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 
-from .config import load_config
+from .config import load_config, whatsapp_configured
 from .routes import bp
 from .service import VigiBridge
 
@@ -30,6 +30,13 @@ def init_vigi(app, cfg: dict | None = None, start: bool = True, **bridge_kwargs)
         log.warning("VIGI_INGEST_TOKEN is not set; anyone who can reach /vigi/alarm can post events")
     if not cfg.get("api_key"):
         log.warning("VIGI_API_KEY is not set; reports, events and arming endpoints are disabled")
+    if whatsapp_configured(cfg):
+        wa = cfg["notify"]["whatsapp"]
+        if not wa.get("alarm_template"):
+            log.warning("WHATSAPP_ALARM_TEMPLATE is not set; WhatsApp alarms only reach people who "
+                        "messaged the bot in the last 24 hours")
+        if not wa.get("app_secret"):
+            log.warning("WHATSAPP_APP_SECRET is not set; WhatsApp commands are disabled")
     if start:
         vigi.start()
     return vigi

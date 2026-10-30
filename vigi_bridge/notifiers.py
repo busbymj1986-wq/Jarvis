@@ -136,9 +136,14 @@ class WebhookNotifier(Notifier):
         self._post({"kind": "report", "subject": subject, "text": text})
 
 
-def build_notifiers(cfg: dict) -> list[Notifier]:
+def build_notifiers(cfg: dict, windows=None) -> list[Notifier]:
+    from .config import whatsapp_configured
+    from .whatsapp import WhatsAppClient, WhatsAppNotifier
+
     n = cfg["notify"]
     out: list[Notifier] = []
+    if whatsapp_configured(cfg) and windows is not None:
+        out.append(WhatsAppNotifier(n["whatsapp"], WhatsAppClient(n["whatsapp"]), windows))
     if n["telegram"].get("bot_token") and n["telegram"].get("chat_id"):
         out.append(TelegramNotifier(n["telegram"]["bot_token"], str(n["telegram"]["chat_id"])))
     if n["email"].get("host") and n["email"].get("to"):

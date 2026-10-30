@@ -9,12 +9,14 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from .ai import AnalysisError, SnapshotAnalyzer
+from .config import whatsapp_configured
 from .events import parse_push
 from .notifiers import build_notifiers
 from .nvr import NvrClient
 from .reports import build_report, render_html, render_text, report_title
 from .rules import ARM_MODES, RuleEngine, _parse_hhmm
 from .store import Store, from_iso, iso
+from .whatsapp import WhatsAppBot, WhatsAppClient, Windows
 
 log = logging.getLogger("vigi")
 
@@ -30,9 +32,13 @@ class VigiBridge:
         self.store = store or Store(cfg["data_dir"])
         self.nvr = nvr or NvrClient(cfg)
         self.analyzer = analyzer or SnapshotAnalyzer(cfg)
-        self.notifiers = build_notifiers(cfg) if notifiers is None else notifiers
-        self.rules = RuleEngine(cfg, self.store, self.tz)
         self.now = clock
+        self.whatsapp_windows = Windows(self.store, clock)
+        self.notifiers = build_notifiers(cfg, self.whatsapp_windows) if notifiers is None else notifiers
+        self.rules = RuleEngine(cfg, self.store, self.tz)
+        self.whatsapp = None
+        if whatsapp_configured(cfg):
+            self.whatsapp = WhatsAppBot(self, WhatsAppClient(cfg["notify"]["whatsapp"]), self.whatsapp_windows)
         self._events: queue.Queue = queue.Queue()
         self._clips: queue.PriorityQueue = queue.PriorityQueue()
         self._stop = threading.Event()
@@ -193,6 +199,7 @@ class VigiBridge:
         ai = event.get("ai") or {}
         what = event["label"].replace("_", " ").title()
         cam = event["channel_name"]
+        detail = (ai.get("description") or event.get("reason") or "").rstrip(". ")
         lines = [f"🚨 ALARM - {cam}", f"{what} at {local:%a %d %b %H:%M:%S}"]
         if ai.get("description"):
             threat = f" (threat: {ai['threat_level']})" if ai.get("threat_level") else ""
@@ -205,6 +212,9 @@ class VigiBridge:
             lines.append(link)
         return {
             "id": event["id"],
+            "channel": event["channel"],
+            # Body parameters for the WhatsApp templates: camera, event and time, details.
+            "template_params": [cam, f"{what} at {local:%H:%M:%S on %d %b}", detail],
             "subject": f"[Jarvis] ALARM: {what} at {cam} ({local:%H:%M})",
             "text": "\n".join(lines),
             "clip_text": f"🎥 Clip - {cam}, {what} at {local:%H:%M:%S}",
@@ -306,6 +316,7 @@ class VigiBridge:
             "ai_enabled": self.analyzer.enabled,
             "ai_mode": self.cfg["ai"].get("mode"),
             "notifiers": [n.name for n in self.notifiers],
+            "whatsapp_commands": bool(self.whatsapp and self.cfg["notify"]["whatsapp"].get("app_secret")),
             "queued_events": self._events.qsize(),
             "queued_clips": self._clips.qsize(),
             "today": {k: today[k] for k in ("total_events", "alarms_sent", "dismissed_by_ai", "grouped", "logged")},

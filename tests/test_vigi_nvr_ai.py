@@ -33,8 +33,15 @@ def test_ffmpeg_cmd_options():
     assert rtsp[rtsp.index("-c:v") + 1] == "copy"
     assert "-an" in rtsp
     assert "-rtsp_transport" not in client.ffmpeg_cmd("/tmp/in.mp4", 15, "/tmp/out.mp4")
-    client.clips["transcode"] = True
+    client.transcode = True
     assert "libx264" in client.ffmpeg_cmd("rtsp://x", 15, "/tmp/out.mp4")
+
+
+def test_transcode_auto_follows_whatsapp():
+    assert NvrClient(cfg(nvr={"host": "h", "password": "p"})).transcode is False
+    wa = {"token": "t", "phone_number_id": "1", "recipients": ["27820000000"]}
+    assert NvrClient(cfg(notify={"whatsapp": wa})).transcode is True
+    assert NvrClient(cfg(notify={"whatsapp": wa}, clips={"transcode": False})).transcode is False
 
 
 @pytest.mark.skipif(not shutil.which("ffmpeg"), reason="ffmpeg not installed")
@@ -48,6 +55,25 @@ def test_ffmpeg_cuts_a_real_clip(tmp_path):
     probe = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(out)],
                            capture_output=True, text=True)
     assert 1.5 <= float(probe.stdout) <= 2.5
+
+
+@pytest.mark.skipif(not shutil.which("ffmpeg"), reason="ffmpeg not installed")
+def test_whatsapp_transcode_produces_baseline_h264(tmp_path):
+    source = tmp_path / "source.mp4"
+    subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i",
+                    "testsrc=duration=3:size=1920x1080:rate=10", "-c:v", "libx264", "-profile:v", "high", "-pix_fmt", "yuv420p",
+                    str(source)], check=True)
+    client = NvrClient(cfg(nvr={"host": "h", "password": "p"}, clips={"transcode": True}))
+    out = tmp_path / "clip.mp4"
+    assert client.run_ffmpeg(str(source), 2, str(out)) is True
+    probe = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+                            "stream=codec_name,profile,width,has_b_frames", "-of", "json", str(out)],
+                           capture_output=True, text=True)
+    stream = json.loads(probe.stdout)["streams"][0]
+    assert stream["codec_name"] == "h264"
+    assert "Baseline" in stream["profile"]
+    assert stream["width"] == 1280
+    assert stream["has_b_frames"] == 0
 
 
 def test_snapshot_auth_failure_pauses_requests(monkeypatch):
