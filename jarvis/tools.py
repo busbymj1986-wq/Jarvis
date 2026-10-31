@@ -1,7 +1,6 @@
-"""Staff-management tools shared by the Claude agent, the Grok agent and the voice line.
+"""Staff, email and calendar tools for the Claude agent (chat, API and voice line).
 
-Tools are defined once (name, description, JSON schema) and converted to each
-provider's format. `execute_tool` runs them against the store and returns a
+Tools are defined once (name, description, JSON schema) and filtered by role. `execute_tool` runs them against the store and returns a
 JSON string result. Crew callers only get read tools plus status updates on
 their own jobs; managers get everything.
 """
@@ -165,13 +164,6 @@ def tools_for(role):
 
 def claude_tools(role="manager"):
     return [{"name": t["name"], "description": t["description"], "input_schema": t["schema"], "strict": True}
-            for t in tools_for(role)]
-
-
-def grok_tools(role="manager"):
-    # xAI uses the OpenAI-compatible function-calling format.
-    return [{"type": "function",
-             "function": {"name": t["name"], "description": t["description"], "parameters": t["schema"]}}
             for t in tools_for(role)]
 
 

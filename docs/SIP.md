@@ -1,12 +1,12 @@
 # SIP and voice setup
 
-Jarvis answers a phone line or SIP extension. Twilio turns speech into text. Claude or Grok
+Jarvis answers a phone line or SIP extension. Twilio turns speech into text. Claude
 runs the staff tools (rosters, jobs, clashes, SMS) and the answer is read back to the caller.
 
 ```
 Desk phone / softphone / PBX ──SIP──▶ Twilio SIP Domain ─┐
 Mobile / landline ──PSTN──▶ Twilio number ───────────────┼─▶ POST /voice/incoming  (greeting + listen)
-                                                         └─▶ POST /voice/gather    (speech → Claude/Grok → reply)
+                                                         └─▶ POST /voice/gather    (speech → Claude → reply)
                                                              POST /voice/status    (call ended, clear memory)
 ```
 
@@ -79,5 +79,5 @@ Managers (`is_manager`) get every tool. Crew get read-only tools plus status upd
 
 - Set `TWILIO_AUTH_TOKEN` and `PUBLIC_BASE_URL`. Every `/voice/*` request is then checked against Twilio's signature, and forged requests get a 403.
 - Use TLS/SRTP on phones. Restrict the SIP domain with an IP access control list if your PBX has a static IP.
-- Twilio waits about 15 seconds for a webhook. Voice requests run Claude at `effort: low` to stay fast. If replies are slow, set `VOICE_PROVIDER` to whichever agent answers faster for you.
+- Twilio waits about 15 seconds for a webhook. Voice requests run Claude at `effort: low` to stay fast.
 - Conversation memory is kept per call (by CallSid) in process memory. Run gunicorn with one worker (`--workers 1 --threads 8`), or move that memory to Redis.

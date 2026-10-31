@@ -90,10 +90,10 @@ def api_voice():
         return api_reset()
     if "sms" in cmd or "message" in cmd:
         return api_sms()
-    # Anything else is a staff-management request for Claude/Grok (needs the API key).
+    # Anything else is a staff-management request for Claude (needs the API key).
     if cmd and authorized():
         try:
-            return jsonify(ai.run_agent(cmd, provider=(request.json or {}).get("provider"), voice=True))
+            return jsonify(ai.run_agent(cmd, voice=True))
         except ai.AgentError as e:
             return jsonify({"error": str(e)}), 502
     return jsonify({"error": "unknown command", "heard": cmd})
@@ -103,7 +103,7 @@ def index():
     return jsonify({
         "service": "Jarvis Flask Backend",
         "status": "online",
-        "agents": {"claude": ai.CLAUDE_MODEL, "grok": ai.GROK_MODEL, "default": ai.default_provider()},
+        "agent": ai.CLAUDE_MODEL,
         "voice_webhook": "/voice/incoming",
     })
 

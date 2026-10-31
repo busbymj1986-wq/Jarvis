@@ -30,7 +30,7 @@ def _hm(value, default):
 # ---------------- the three updates ----------------
 
 def morning():
-    text = ai.desk_note("today", provider=os.environ.get("BRIEF_PROVIDER", "claude"))["reply"]
+    text = ai.desk_note("today")["reply"]
     return notify.send_owner(f"Morning brief {_now_local():%a %d %b}", text)
 
 
@@ -38,7 +38,7 @@ def evening():
     prompt = ("Write my evening wrap-up: call list_jobs for today and tomorrow (day_sheet for tomorrow). "
               "Say what got done, what is still open or not closed off, and tomorrow's plan with anything "
               "unassigned or clashing. Plain text, under 150 words. Do not change any data.")
-    text = ai.run_agent(prompt, provider=os.environ.get("BRIEF_PROVIDER", "claude"))["reply"]
+    text = ai.run_agent(prompt)["reply"]
     return notify.send_owner(f"Evening wrap {_now_local():%a %d %b}", text)
 
 
@@ -107,7 +107,7 @@ def collect_changes():
                       "municipality/engineers, site problems, quotes, payments, plant, staff), one line each: "
                       "'Sender – what they want'. If none matter reply exactly NONE.\n\n" + listing)
             try:
-                triage = ai.quick_text(prompt, provider=os.environ.get("BRIEF_PROVIDER", "claude"))
+                triage = ai.quick_text(prompt)
             except ai.AgentError:
                 triage = "\n".join(f"{m['from']} – {m['subject']}" for m in new)
             if triage and triage.strip().upper() != "NONE":

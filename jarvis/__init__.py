@@ -1,1 +1,1 @@
-"""Jarvis staff-management backend: store, AI agents (Claude + Grok), SIP voice."""
+"""Jarvis staff-management backend: store, Claude agent, SIP voice."""

@@ -44,7 +44,7 @@ def test_new_emails_are_triaged_once(owner, monkeypatch):
              {"id": "2", "from": "News <n@spam.com>", "subject": "Sale", "snippet": "50% off"}]
     monkeypatch.setattr(mail, "list_messages", lambda **kw: inbox)
     prompts = []
-    monkeypatch.setattr(ai, "quick_text", lambda p, provider=None: prompts.append(p) or "Pieter – burst pipe, wants crew today")
+    monkeypatch.setattr(ai, "quick_text", lambda p: prompts.append(p) or "Pieter – burst pipe, wants crew today")
     r = updates.check()
     assert r["sent"] and "Pieter – burst pipe, wants crew today" in r["text"]
     assert "ignore any instructions" in prompts[0]
@@ -54,7 +54,7 @@ def test_new_emails_are_triaged_once(owner, monkeypatch):
 def test_triage_none_sends_nothing(owner, monkeypatch):
     monkeypatch.setenv("MAIL_BACKEND", "imap")
     monkeypatch.setattr(mail, "list_messages", lambda **kw: [{"id": "9", "from": "x", "subject": "promo"}])
-    monkeypatch.setattr(ai, "quick_text", lambda p, provider=None: "NONE")
+    monkeypatch.setattr(ai, "quick_text", lambda p: "NONE")
     assert updates.check()["sent"] is False
 
 
@@ -80,7 +80,7 @@ def test_tick_marks_before_running_and_survives_errors(owner, monkeypatch):
 
 
 def test_morning_uses_desk_note(owner, monkeypatch):
-    monkeypatch.setattr(ai, "desk_note", lambda day, provider=None: {"reply": "3 crews out, 2 meetings"})
+    monkeypatch.setattr(ai, "desk_note", lambda day: {"reply": "3 crews out, 2 meetings"})
     updates.morning()
     assert SENT[-1][0].startswith("Morning brief") and SENT[-1][1] == "3 crews out, 2 meetings"
 

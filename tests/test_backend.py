@@ -75,9 +75,9 @@ def test_voice_sip_caller_and_agent(client, monkeypatch):
 
     seen = {}
 
-    def fake_agent(message, provider=None, history=None, caller=None, voice=False):
+    def fake_agent(message, history=None, caller=None, voice=False):
         seen.update(message=message, caller=caller["name"], voice=voice, history=list(history))
-        return {"reply": "You have one job at eight.", "actions": [], "provider": "claude"}
+        return {"reply": "You have one job at eight.", "actions": [], "agent": "claude"}
 
     monkeypatch.setattr(ai, "run_agent", fake_agent)
     r = client.post("/voice/gather", data={"From": "sip:201@jarvis.sip.twilio.com", "CallSid": "CA2",
@@ -126,7 +126,7 @@ def test_claude_loop_executes_tools(client, monkeypatch):
             return _Block(stop_reason="end_turn", content=[_Block(type="text", text="Added Thandi.")])
 
     monkeypatch.setattr(ai, "_claude", lambda: _Block(beta=_Block(messages=FakeMessages())))
-    out = ai.run_agent("Add Thandi to the crew", provider="claude")
+    out = ai.run_agent("Add Thandi to the crew")
     assert out["reply"] == "Added Thandi." and out["actions"][0]["result"]["ok"]
     assert store.find_staff("Thandi")
     assert calls[0]["model"] == "claude-opus-5-5"
@@ -134,33 +134,8 @@ def test_claude_loop_executes_tools(client, monkeypatch):
     assert tr["type"] == "tool_result" and tr["tool_use_id"] == "tu1"
 
 
-def test_grok_loop_executes_tools(client, monkeypatch):
-    seed()
-    monkeypatch.setenv("XAI_API_KEY", "x")
-    replies = [
-        {"choices": [{"message": {"content": None, "tool_calls": [
-            {"id": "c1", "type": "function", "function": {"name": "list_staff", "arguments": "{}"}}]}}]},
-        {"choices": [{"message": {"content": "Mia and Sipho are on."}}]},
-    ]
-    sent = []
-
-    class R:
-        status_code = 200
-
-        def __init__(self, d):
-            self.d = d
-
-        def json(self):
-            return self.d
-
-    def fake_post(url, json=None, **kw):
-        sent.append(json)
-        return R(replies[len(sent) - 1])
-
-    monkeypatch.setattr(ai.requests, "post", fake_post)
-    out = ai.run_agent("Who's working?", provider="grok")
-    assert out["reply"] == "Mia and Sipho are on."
-    assert sent[1]["messages"][-1]["role"] == "tool" and "Sipho" in sent[1]["messages"][-1]["content"]
+def test_no_grok_left():
+    assert not hasattr(ai, "run_grok") and not hasattr(tools, "grok_tools")
 
 
 def test_demo_routes_still_work(client):

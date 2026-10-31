@@ -1,7 +1,7 @@
 """SQLite store for crew (staff), jobs and the call log.
 
 Mirrors the phone app's store.ts (crew, jobs, group link) so the backend can be
-the single source of truth that Claude, Grok and the SIP voice line all share.
+the single source of truth that Claude and the SIP voice line share.
 """
 import os
 import sqlite3

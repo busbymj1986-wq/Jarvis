@@ -38,7 +38,7 @@ def test_no_send_tool_and_crew_cannot_read(client, fake_mail):
     names = {t["name"] for t in tools.claude_tools("manager")}
     assert {"check_inbox", "read_email", "draft_email", "list_drafts"} <= names
     assert not any("send" in n for n in names)
-    assert "check_inbox" not in {t["function"]["name"] for t in tools.grok_tools("crew")}
+    assert "check_inbox" not in {t["name"] for t in tools.claude_tools("crew")}
     crew = store.add_staff("Sipho", phone="+27822220000")
     out, err = tools.execute_tool("check_inbox", {}, caller=crew)
     assert err
@@ -72,7 +72,7 @@ def test_voice_send_it_sends_last_draft_on_call(client, fake_mail, monkeypatch):
 
     def fake_agent(message, **kw):
         out, _ = tools.execute_tool("draft_email", {"reply_to_id": "m1", "body": "On it."})
-        return {"reply": "Drafted a reply to Pieter. Say send it to send.", "provider": "claude",
+        return {"reply": "Drafted a reply to Pieter. Say send it to send.", "agent": "claude",
                 "actions": [{"tool": "draft_email", "input": {}, "result": json.loads(out)}]}
 
     monkeypatch.setattr(ai, "run_agent", fake_agent)

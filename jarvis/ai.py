@@ -1,19 +1,15 @@
-"""Claude and Grok agents that manage staff through the shared tools.
+"""The Claude agent that runs crews, email and calendar through the shared tools.
 
-Both run the same loop: send the conversation + tools, execute any tool calls
-against the store, send results back, stop when the model answers in text.
+Loop: send the conversation + tools, execute any tool calls against the store,
+send results back, stop when Claude answers in text.
 """
 import json
 import os
 from datetime import datetime
 
-import requests
-
 from . import tools
 
 CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-opus-5-5")
-GROK_MODEL = os.environ.get("XAI_MODEL", "grok-4")
-XAI_URL = os.environ.get("XAI_BASE_URL", "https://api.x.ai/v1") + "/chat/completions"
 MAX_STEPS = 8
 
 
@@ -105,61 +101,14 @@ def run_claude(message, history=None, caller=None, voice=False):
     return {"reply": "I ran out of steps on that one — please try a simpler request.", "actions": actions}
 
 
-# ---------------- Grok (xAI) ----------------
-
-def run_grok(message, history=None, caller=None, voice=False):
-    key = os.environ.get("XAI_API_KEY")
-    if not key:
-        raise AgentError("XAI_API_KEY is not set")
-    messages = [{"role": "system", "content": system_prompt(caller, voice)},
-                *(history or []), {"role": "user", "content": message}]
-    actions = []
-    for _ in range(MAX_STEPS):
-        try:
-            r = requests.post(XAI_URL, timeout=90, headers={"Authorization": f"Bearer {key}"},
-                              json={"model": GROK_MODEL, "messages": messages,
-                                    "tools": tools.grok_tools(_role(caller)), "tool_choice": "auto"})
-        except requests.RequestException as e:
-            raise AgentError("Could not reach the xAI API") from e
-        if r.status_code >= 400:
-            raise AgentError(f"xAI API error {r.status_code}: {r.text[:300]}")
-        msg = r.json()["choices"][0]["message"]
-        calls = msg.get("tool_calls") or []
-        if not calls:
-            return {"reply": (msg.get("content") or "").strip(), "actions": actions}
-
-        messages.append({"role": "assistant", "content": msg.get("content") or "", "tool_calls": calls})
-        for call in calls:
-            fn = call["function"]
-            try:
-                args = json.loads(fn.get("arguments") or "{}")
-            except json.JSONDecodeError:
-                out, args = json.dumps({"ok": False, "error": "Invalid JSON arguments"}), {}
-            else:
-                out, _ = tools.execute_tool(fn["name"], args, caller)
-            actions.append({"tool": fn["name"], "input": args, "result": json.loads(out)})
-            messages.append({"role": "tool", "tool_call_id": call["id"], "content": out})
-    return {"reply": "I ran out of steps on that one — please try a simpler request.", "actions": actions}
-
-
-PROVIDERS = {"claude": run_claude, "grok": run_grok}
-
-
-def default_provider():
-    return os.environ.get("JARVIS_PROVIDER", "claude")
-
-
-def run_agent(message, provider=None, history=None, caller=None, voice=False):
-    provider = (provider or default_provider()).lower()
-    if provider not in PROVIDERS:
-        raise AgentError(f"Unknown provider '{provider}', use claude or grok")
-    result = PROVIDERS[provider](message, history=history, caller=caller, voice=voice)
-    result["provider"] = provider
+def run_agent(message, history=None, caller=None, voice=False):
+    result = run_claude(message, history=history, caller=caller, voice=voice)
+    result["agent"] = "claude"
     return result
 
 
-def desk_note(day="today", provider="grok"):
-    """The 'Grok desk note': a short manager briefing for the day."""
+def desk_note(day="today"):
+    """The desk note: a short manager briefing for the day."""
     from . import calendar_sync, mail
     email_part = ""
     if calendar_sync.configured():
@@ -170,22 +119,11 @@ def desk_note(day="today", provider="grok"):
     prompt = (f"Write the desk note for {day}: call day_sheet and list_staff, then give a short briefing — "
               "who is working where, unassigned jobs, clashes or gaps, and anyone with nothing booked."
               f"{email_part} Plain text, under 180 words. Do not change any data or draft emails.")
-    return run_agent(prompt, provider=provider)
+    return run_agent(prompt)
 
 
-def quick_text(prompt, provider=None, system="You are Jarvis, a concise PA for a civils contractor."):
-    """One-shot text answer, no tools (used for triaging new emails)."""
-    provider = (provider or default_provider()).lower()
-    if provider == "grok":
-        key = os.environ.get("XAI_API_KEY")
-        if not key:
-            raise AgentError("XAI_API_KEY is not set")
-        r = requests.post(XAI_URL, timeout=60, headers={"Authorization": f"Bearer {key}"},
-                          json={"model": GROK_MODEL, "messages": [{"role": "system", "content": system},
-                                                                  {"role": "user", "content": prompt}]})
-        if r.status_code >= 400:
-            raise AgentError(f"xAI API error {r.status_code}")
-        return (r.json()["choices"][0]["message"].get("content") or "").strip()
+def quick_text(prompt, system="You are Jarvis, a concise PA for a civils contractor."):
+    """One-shot text answer from Claude, no tools (used for triaging new emails)."""
     import anthropic
     try:
         resp = _claude().beta.messages.create(

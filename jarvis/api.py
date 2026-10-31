@@ -1,4 +1,4 @@
-"""REST API for managing staff and jobs, and for talking to the Claude/Grok agents.
+"""REST API for managing staff and jobs, and for talking to the Claude agent.
 
 All routes need `Authorization: Bearer $JARVIS_API_KEY` (or `X-API-Key`).
 """
@@ -115,7 +115,7 @@ def whatsapp_group():
 
 @bp.post("/agent")
 def agent():
-    """Body: {"message": "...", "provider": "claude"|"grok", "history": [{"role","content"}...]}"""
+    """Body: {"message": "...", "history": [{"role","content"}...]}"""
     b = _body()
     if not b.get("message"):
         return jsonify({"error": "message is required"}), 400
@@ -128,7 +128,7 @@ def agent():
     history = [{"role": h["role"], "content": str(h["content"])} for h in b.get("history", [])
                if h.get("role") in ("user", "assistant")]
     try:
-        return jsonify(ai.run_agent(b["message"], provider=b.get("provider"), history=history))
+        return jsonify(ai.run_agent(b["message"], history=history))
     except ai.AgentError as e:
         return jsonify({"error": str(e)}), 502
 
@@ -137,7 +137,7 @@ def agent():
 def desk_note():
     b = _body()
     try:
-        return jsonify(ai.desk_note(b.get("day", "today"), b.get("provider", "grok")))
+        return jsonify(ai.desk_note(b.get("day", "today")))
     except ai.AgentError as e:
         return jsonify({"error": str(e)}), 502
 
@@ -152,7 +152,6 @@ def sip_info():
         "sip_domain": domain,
         "voice_webhook": f"{base}/voice/incoming",
         "status_callback": f"{base}/voice/status",
-        "voice_provider": os.environ.get("VOICE_PROVIDER", ai.default_provider()),
         "signature_validation": bool(os.environ.get("TWILIO_AUTH_TOKEN")),
         "extensions": [{"name": s["name"], "ext": s["sip_ext"],
                         "uri": f"sip:{s['sip_ext']}@{domain}" if domain else None}

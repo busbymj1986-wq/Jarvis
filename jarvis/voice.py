@@ -2,7 +2,7 @@
 
 Calls arrive from a phone number or a SIP endpoint (desk phone, softphone, PBX
 trunk) registered on a Twilio SIP Domain. Twilio does speech-to-text, we run
-the Claude/Grok agent, and reply with TwiML <Say>. Staff are recognised by
+the Claude agent, and reply with TwiML <Say>. Staff are recognised by
 caller ID (phone) or by their SIP extension. See docs/SIP.md.
 """
 import os
@@ -149,9 +149,8 @@ def gather():
     # Treat an unknown caller (only when ALLOW_UNKNOWN_CALLERS=1) as read-only crew.
     as_caller = caller or {"id": -1, "name": "Unknown caller", "is_manager": 0}
     history = _history(call_sid)
-    provider = os.environ.get("VOICE_PROVIDER", ai.default_provider())
     try:
-        result = ai.run_agent(heard, provider=provider, history=history, caller=as_caller, voice=True)
+        result = ai.run_agent(heard, history=history, caller=as_caller, voice=True)
         reply = result["reply"] or "Done."
         for act in result.get("actions", []):
             if act["tool"] == "draft_email" and act["result"].get("draft_id"):
@@ -159,7 +158,7 @@ def gather():
     except ai.AgentError:
         reply = "Sorry, my brain is offline right now. Please try again in a minute."
     history += [{"role": "user", "content": heard}, {"role": "assistant", "content": reply}]
-    store.log_call(call_sid, request.form.get("From"), heard, reply, provider)
+    store.log_call(call_sid, request.form.get("From"), heard, reply, "claude")
     return _twiml(_gather(reply) + _say("Goodbye.") + "<Hangup/>")
 
 
