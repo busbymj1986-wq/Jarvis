@@ -4,6 +4,7 @@ A PA that runs the civils crews, watches my email and Outlook calendar, and keep
 
 A Flask backend that holds the crew and jobs data and exposes it three ways:
 
+- **Claude Desktop (no API key)**: chat with Jarvis inside the Claude app you already pay for. The setup connects it. See [docs/CLAUDE_DESKTOP.md](docs/CLAUDE_DESKTOP.md).
 - **Chat page** at http://localhost:5000 (or your server address): log in with your Jarvis password or personal key, chat with Claude (typing or the mic button), and see today's jobs, crew and email drafts waiting to send. Works on a phone too.
 - **REST API** (`/api/*`) for the phone app or a dashboard. `GET /health` returns the server status.
 - **AI agent** (`POST /api/agent`): plain-English requests handled by Claude (`claude-opus-5-5`) using the staff tools.
@@ -22,6 +23,7 @@ A Flask backend that holds the crew and jobs data and exposes it three ways:
 | `jarvis/tools.py` | Staff tools, defined once and with manager/crew permissions |
 | `jarvis/ai.py` | Claude tool-use loop, the desk note and email triage |
 | `jarvis/static/index.html` | The chat page (no build step, plain HTML/JS) |
+| `jarvis/mcp_server.py` | Jarvis tools for Claude Desktop (MCP), using your subscription instead of an API key |
 | `jarvis/api.py` | REST endpoints (Bearer `JARVIS_API_KEY`) |
 | `jarvis/mail.py` | Inbox reading (Graph or IMAP) and sending approved drafts (Graph or SMTP) |
 | `jarvis/calendar_sync.py` | Outlook calendar: jobs to events, pull moves back, your meetings |

@@ -11,7 +11,9 @@ from . import tools
 
 CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-opus-5-5")
 MAX_STEPS = 8
-NO_KEY_MSG = "Claude isn't set up yet: add ANTHROPIC_API_KEY to your .env file (or server settings) and restart."
+NO_KEY_MSG = ("This chat box needs a Claude API key (ANTHROPIC_API_KEY in .env). No key? Chat with Jarvis "
+              "in the Claude Desktop app instead: it uses your Claude subscription. The panels on this page "
+              "still work without a key.")
 
 
 class AgentError(Exception):

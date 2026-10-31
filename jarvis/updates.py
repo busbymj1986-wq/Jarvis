@@ -29,8 +29,43 @@ def _hm(value, default):
 
 # ---------------- the three updates ----------------
 
+def plain_brief(day=None):
+    """The day at a glance without AI: meetings, crew plan, gaps, unread email."""
+    day = day or _now_local().date().isoformat()
+    parts = []
+    if calendar_sync.configured():
+        try:
+            meetings = calendar_sync.my_events(day)
+            parts.append("Your meetings:\n" + ("\n".join(f"• {m['start'][11:16]}–{m['end'][11:16]} {m['subject']}"
+                                                         + (f" @ {m['location']}" if m["location"] else "")
+                                                         for m in meetings) or "• none"))
+        except Exception as e:
+            parts.append(f"Your meetings: couldn't read Outlook ({e})")
+    jobs = [j for j in store.list_jobs(day=day) if j["status"] != "cancelled"]
+    names = {s["id"]: s["name"] for s in store.list_staff(include_inactive=True)}
+    parts.append("Crew plan:\n" + ("\n".join(
+        f"• {j['start'][11:16]}–{j['end'][11:16]} {names.get(j['staff_id'], 'NO CREW')}: {j['title']}"
+        + (f" @ {j['address']}" if j.get("address") else "") + (f" [{j['status']}]" if j["status"] != "scheduled" else "")
+        for j in jobs) or "• nothing booked"))
+    busy = {j["staff_id"] for j in jobs if j["staff_id"]}
+    idle = [s["name"] for s in store.list_staff() if s["id"] not in busy and store.access_of(s) == "crew"]
+    if idle:
+        parts.append("Nothing booked for: " + ", ".join(idle))
+    if mail.configured():
+        try:
+            unread = mail.list_messages(unread_only=True, limit=10)
+            parts.append(f"Unread email ({len(unread)}):\n" + ("\n".join(
+                f"• {m['from'].split('<')[0].strip() or m['from']} – {m['subject']}" for m in unread) or "• none"))
+        except Exception as e:
+            parts.append(f"Email: couldn't check ({e})")
+    return "\n\n".join(parts)
+
+
 def morning():
-    text = ai.desk_note("today")["reply"]
+    try:
+        text = ai.desk_note("today")["reply"]
+    except ai.AgentError:
+        text = plain_brief()  # no Claude API key (or it's down): send the plain version
     return notify.send_owner(f"Morning brief {_now_local():%a %d %b}", text)
 
 
@@ -38,7 +73,14 @@ def evening():
     prompt = ("Write my evening wrap-up: call list_jobs for today and tomorrow (day_sheet for tomorrow). "
               "Say what got done, what is still open or not closed off, and tomorrow's plan with anything "
               "unassigned or clashing. Plain text, under 150 words. Do not change any data.")
-    text = ai.run_agent(prompt)["reply"]
+    try:
+        text = ai.run_agent(prompt)["reply"]
+    except ai.AgentError:
+        today = _now_local().date()
+        open_jobs = [j for j in store.list_jobs(day=today.isoformat()) if j["status"] not in ("done", "cancelled")]
+        text = ("Still open today:\n" + ("\n".join(f"• #{j['id']} {j['title']} [{j['status']}]" for j in open_jobs)
+                                         or "• nothing, all closed off")
+                + "\n\nTomorrow:\n" + plain_brief((today + timedelta(days=1)).isoformat()))
     return notify.send_owner(f"Evening wrap {_now_local():%a %d %b}", text)
 
 
