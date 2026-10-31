@@ -285,7 +285,7 @@ def _run(name, a, caller, role):
         return {"staff": s["name"], "free": not found, "clashes": found}
 
     if name == "add_staff":
-        return {"ok": True, "staff": store.add_staff(a["name"], a.get("role") or "crew", a.get("phone"),
+        return {"ok": True, "staff": store.add_staff(a["name"], a.get("role") or ("manager" if a.get("is_manager") else "crew"), a.get("phone"),
                                                      a.get("email"), a.get("sip_ext"), a.get("is_manager", False))}
 
     if name == "update_staff":

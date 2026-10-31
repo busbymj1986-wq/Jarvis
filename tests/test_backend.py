@@ -166,3 +166,8 @@ def test_grok_loop_executes_tools(client, monkeypatch):
 def test_demo_routes_still_work(client):
     assert client.post("/api/next").status_code == 200
     assert client.get("/api/status").json["current_line"] == 1
+
+
+def test_manager_role_defaults(client):
+    r = client.post("/api/staff", headers=AUTH, json={"name": "Mike", "is_manager": True}).json
+    assert r["staff"]["role"] == "manager"

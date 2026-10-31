@@ -78,7 +78,7 @@ def test_event_deleted_in_outlook_is_recreated_on_edit(graph):
 def test_pull_moves_from_outlook(graph, monkeypatch):
     from datetime import date
     day = date.today().isoformat()
-    s = store.add_staff("Sipho")
+    store.add_staff("Sipho")
     job = json.loads(tools.execute_tool("create_job", {"title": "Pipe", "start": f"{day}T23:00",
                                                        "end": f"{day}T23:30", "staff": "Sipho"})[0])["job"]
     graph.events[job["outlook_event_id"]]["start"] = {"dateTime": f"{day}T22:00:00.0000000"}
