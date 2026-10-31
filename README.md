@@ -27,7 +27,19 @@ A Flask backend that holds the crew and jobs data and exposes it three ways:
 | `jarvis/voice.py` | Twilio voice webhooks: caller ID/SIP extension lookup, speech to agent, call transfer |
 | `tests/` | `python -m pytest -q` |
 
-## Run on your PC (Windows or Mac)
+## Run on your PC: one command (Windows)
+
+Open **PowerShell** (Start menu → type `PowerShell` → Enter), paste this line and press Enter:
+
+```powershell
+irm https://raw.githubusercontent.com/busbymj1986-wq/Jarvis/main/setup.ps1 | iex
+```
+
+It installs Git and Python if needed, downloads Jarvis to your user folder, asks for your Claude key,
+adds a **Start Jarvis** shortcut to your Desktop, and opens http://localhost:5000.
+Run the same line again any time to update Jarvis. Your settings and data are kept.
+
+## Run on your PC: by hand (Windows or Mac)
 
 1. Install **Python 3.12+** from python.org (on Windows, tick "Add python.exe to PATH") and **Git** from git-scm.com.
 2. Open a terminal (Windows: PowerShell) and run:
