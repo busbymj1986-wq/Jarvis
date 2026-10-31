@@ -78,7 +78,7 @@ CREATE TABLE IF NOT EXISTS call_log (
 
 
 def db_path():
-    return os.environ.get("JARVIS_DB", os.path.join(os.path.dirname(__file__), "..", "jarvis.db"))
+    return os.environ.get("JARVIS_DB") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "jarvis.db")
 
 
 @contextmanager

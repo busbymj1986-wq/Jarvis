@@ -18,6 +18,8 @@ SENT = []
 def fake_mail(monkeypatch):
     SENT.clear()
     monkeypatch.setenv("MAIL_BACKEND", "imap")
+    for k, v in {"IMAP_HOST": "imap.test", "MAIL_USER": "me@test", "MAIL_PASSWORD": "pw"}.items():
+        monkeypatch.setenv(k, v)
     monkeypatch.setattr(mail, "_imap_list", lambda unread, limit, q: [
         {k: v for k, v in m.items() if k not in ("body", "to", "cc")} for m in INBOX.values()])
     monkeypatch.setattr(mail, "_imap_read", lambda mid: INBOX[mid])
@@ -131,3 +133,10 @@ def test_graph_send_reply_and_new(monkeypatch):
     assert calls[0][:2] == ("POST", "/messages/AAMk1/reply") and calls[0][2]["json"] == {"comment": "On it"}
     msg = calls[1][2]["json"]["message"]
     assert calls[1][1] == "/sendMail" and msg["toRecipients"] == [{"emailAddress": {"address": "h@x.co.za"}}]
+
+
+def test_backend_named_but_no_credentials_is_not_configured(monkeypatch):
+    monkeypatch.setenv("MAIL_BACKEND", "graph")
+    for k in ("MS_TENANT_ID", "MS_CLIENT_ID", "MS_CLIENT_SECRET", "MS_MAILBOX"):
+        monkeypatch.delenv(k, raising=False)
+    assert mail.configured() is False

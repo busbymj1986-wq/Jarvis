@@ -11,6 +11,7 @@ from . import tools
 
 CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-opus-5-5")
 MAX_STEPS = 8
+NO_KEY_MSG = "Claude isn't set up yet: add ANTHROPIC_API_KEY to your .env file (or server settings) and restart."
 
 
 class AgentError(Exception):
@@ -84,6 +85,8 @@ def run_claude(message, history=None, caller=None, voice=False):
             raise AgentError(f"Claude API error {e.status_code}: {e.message}") from e
         except anthropic.APIConnectionError as e:
             raise AgentError("Could not reach the Claude API") from e
+        except (TypeError, anthropic.AnthropicError) as e:
+            raise AgentError(NO_KEY_MSG if "authentication" in str(e) else f"Claude error: {e}") from e
 
         if resp.stop_reason == "refusal":
             return {"reply": "Sorry, I can't help with that request.", "actions": actions}
@@ -137,6 +140,8 @@ def quick_text(prompt, system="You are Jarvis, a concise PA for a civils contrac
             betas=["server-side-fallback-2026-07-01"], fallbacks="default")
     except (anthropic.APIStatusError, anthropic.APIConnectionError) as e:
         raise AgentError(f"Claude API error: {e}") from e
+    except (TypeError, anthropic.AnthropicError) as e:
+        raise AgentError(NO_KEY_MSG if "authentication" in str(e) else f"Claude error: {e}") from e
     if resp.stop_reason == "refusal":
         return ""
     return " ".join(b.text for b in resp.content if b.type == "text").strip()

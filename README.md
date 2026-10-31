@@ -27,13 +27,27 @@ A Flask backend that holds the crew and jobs data and exposes it three ways:
 | `jarvis/voice.py` | Twilio voice webhooks: caller ID/SIP extension lookup, speech to agent, call transfer |
 | `tests/` | `python -m pytest -q` |
 
-## Run
+## Run on your PC (Windows or Mac)
 
-```bash
-pip install -r requirements.txt
-cp .env.example .env   # fill in keys, then export them
-python app.py
-```
+1. Install **Python 3.12+** from python.org (on Windows, tick "Add python.exe to PATH") and **Git** from git-scm.com.
+2. Open a terminal (Windows: PowerShell) and run:
+   ```bash
+   git clone https://github.com/busbymj1986-wq/Jarvis.git
+   cd Jarvis
+   python -m venv .venv
+   .venv\Scripts\activate        # Mac: source .venv/bin/activate
+   pip install -r requirements.txt
+   copy .env.example .env         # Mac: cp .env.example .env
+   ```
+3. Open `.env` in Notepad and set at least `JARVIS_API_KEY` (any long password) and `ANTHROPIC_API_KEY`.
+   Leave the other settings blank until you need them.
+4. Start it with `python app.py`, then open http://localhost:5000. You should see `"status": "online"`.
+
+Your data is saved in `jarvis.db` in the same folder. Stop the server with Ctrl+C. Next time, just activate the venv and run `python app.py`.
+
+**Phone calls on a PC:** Twilio needs a public https address. Run `ngrok http 5000` (from ngrok.com),
+put the `https://….ngrok-free.app` address in `PUBLIC_BASE_URL`, and use it for the Twilio webhooks.
+**Scheduled updates** only run while the PC is on and `python app.py` is running.
 
 ## Examples
 

@@ -146,3 +146,12 @@ def test_demo_routes_still_work(client):
 def test_manager_role_defaults(client):
     r = client.post("/api/staff", headers=AUTH, json={"name": "Mike", "is_manager": True}).json
     assert r["staff"]["role"] == "manager"
+
+
+def test_missing_claude_key_gives_clear_error(client, monkeypatch):
+    for k in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setattr(ai, "_claude_client", None)
+    monkeypatch.setenv("HOME", "/nonexistent")  # no saved login profile either
+    r = client.post("/api/agent", headers=AUTH, json={"message": "hi"})
+    assert r.status_code == 502 and "ANTHROPIC_API_KEY" in r.json["error"]

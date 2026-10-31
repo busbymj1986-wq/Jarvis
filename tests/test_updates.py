@@ -40,6 +40,8 @@ def test_alerts_unassigned_soon_and_overrun_once(owner, monkeypatch):
 
 def test_new_emails_are_triaged_once(owner, monkeypatch):
     monkeypatch.setenv("MAIL_BACKEND", "imap")
+    for k, v in {"IMAP_HOST": "imap.test", "MAIL_USER": "me@test", "MAIL_PASSWORD": "pw"}.items():
+        monkeypatch.setenv(k, v)
     inbox = [{"id": "1", "from": "Pieter <p@city.gov.za>", "subject": "Burst pipe", "snippet": "urgent"},
              {"id": "2", "from": "News <n@spam.com>", "subject": "Sale", "snippet": "50% off"}]
     monkeypatch.setattr(mail, "list_messages", lambda **kw: inbox)
@@ -53,6 +55,8 @@ def test_new_emails_are_triaged_once(owner, monkeypatch):
 
 def test_triage_none_sends_nothing(owner, monkeypatch):
     monkeypatch.setenv("MAIL_BACKEND", "imap")
+    for k, v in {"IMAP_HOST": "imap.test", "MAIL_USER": "me@test", "MAIL_PASSWORD": "pw"}.items():
+        monkeypatch.setenv(k, v)
     monkeypatch.setattr(mail, "list_messages", lambda **kw: [{"id": "9", "from": "x", "subject": "promo"}])
     monkeypatch.setattr(ai, "quick_text", lambda p: "NONE")
     assert updates.check()["sent"] is False

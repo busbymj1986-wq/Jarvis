@@ -41,10 +41,12 @@ def backend():
 
 def configured():
     try:
-        backend()
-        return True
+        b = backend()
     except MailError:
         return False
+    if b == "graph":
+        return all(os.environ.get(k) for k in ("MS_TENANT_ID", "MS_CLIENT_ID", "MS_CLIENT_SECRET", "MS_MAILBOX"))
+    return all(os.environ.get(k) for k in ("IMAP_HOST", "MAIL_USER", "MAIL_PASSWORD"))
 
 
 def _clean(text):

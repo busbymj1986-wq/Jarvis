@@ -2,6 +2,12 @@ from flask import Flask, request, jsonify
 from datetime import datetime
 import os
 
+try:  # read settings from a .env file next to app.py (handy on a PC)
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
+except ImportError:
+    pass
+
 from jarvis import ai, store, updates
 from jarvis.api import bp as api_bp, authorized
 from jarvis.voice import bp as voice_bp
