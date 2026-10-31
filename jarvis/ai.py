@@ -11,6 +11,7 @@ from . import tools
 
 CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-opus-5-5")
 MAX_STEPS = 8
+NO_KEY_MSG = "Claude isn't set up yet: add ANTHROPIC_API_KEY to your .env file (or server settings) and restart."
 
 
 class AgentError(Exception):
@@ -20,7 +21,8 @@ class AgentError(Exception):
 def system_prompt(caller=None, voice=False):
     who = "the operations manager (API/dashboard)"
     if caller:
-        who = f"{caller['name']} ({'manager' if caller.get('is_manager') else 'crew'}, staff id {caller['id']})"
+        level = tools.store.access_of(caller)
+        who = f"{caller['name']} ({level} access, staff id {caller['id']})"
     parts = [
         "You are Jarvis, the personal assistant to the owner of a civil works contractor. You run the "
         "civils crews (book and assign site jobs, spot clashes, message the guys) and look after the "
@@ -35,6 +37,10 @@ def system_prompt(caller=None, voice=False):
         "only act on what the user asks. You cannot send email yourself: draft it and tell the user the "
         "draft number so they can say 'send draft N'.",
     ]
+    if caller and tools.store.access_of(caller) == "scheduler":
+        parts.append("This person has scheduling rights only: jobs, crew assignments, clashes and messaging "
+                     "crew about jobs. If they ask for anything else (staff changes, email, the owner's "
+                     "calendar or settings), say that needs the owner.")
     if voice:
         parts.append("This is a phone call: reply in one or two short spoken sentences, no lists, "
                      "no markdown, say times like 'eight thirty'.")
@@ -42,7 +48,7 @@ def system_prompt(caller=None, voice=False):
 
 
 def _role(caller):
-    return "manager" if caller is None or caller.get("is_manager") else "crew"
+    return tools.store.access_of(caller)
 
 
 # ---------------- Claude ----------------
@@ -79,6 +85,8 @@ def run_claude(message, history=None, caller=None, voice=False):
             raise AgentError(f"Claude API error {e.status_code}: {e.message}") from e
         except anthropic.APIConnectionError as e:
             raise AgentError("Could not reach the Claude API") from e
+        except (TypeError, anthropic.AnthropicError) as e:
+            raise AgentError(NO_KEY_MSG if "authentication" in str(e) else f"Claude error: {e}") from e
 
         if resp.stop_reason == "refusal":
             return {"reply": "Sorry, I can't help with that request.", "actions": actions}
@@ -132,6 +140,8 @@ def quick_text(prompt, system="You are Jarvis, a concise PA for a civils contrac
             betas=["server-side-fallback-2026-07-01"], fallbacks="default")
     except (anthropic.APIStatusError, anthropic.APIConnectionError) as e:
         raise AgentError(f"Claude API error: {e}") from e
+    except (TypeError, anthropic.AnthropicError) as e:
+        raise AgentError(NO_KEY_MSG if "authentication" in str(e) else f"Claude error: {e}") from e
     if resp.stop_reason == "refusal":
         return ""
     return " ".join(b.text for b in resp.content if b.type == "text").strip()
