@@ -123,7 +123,7 @@ def gather():
     # "send it" (last draft on this call) or "send draft 3" sends anything.
     is_send, draft_id = mail.parse_send_command(heard)
     if is_send:
-        if not (caller and caller.get("is_manager")):
+        if store.access_of(caller) != "admin" or not caller:
             reply = "Only a manager can send emails."
         elif (draft_id or _last_draft.get(call_sid)) is None:
             reply = "There's no draft to send yet. Which draft number?"
@@ -147,7 +147,7 @@ def gather():
                 return _twiml(twiml)
 
     # Treat an unknown caller (only when ALLOW_UNKNOWN_CALLERS=1) as read-only crew.
-    as_caller = caller or {"id": -1, "name": "Unknown caller", "is_manager": 0}
+    as_caller = caller or {"id": -1, "name": "Unknown caller", "is_manager": 0, "access": "crew"}
     history = _history(call_sid)
     try:
         result = ai.run_agent(heard, history=history, caller=as_caller, voice=True)

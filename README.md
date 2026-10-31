@@ -8,6 +8,7 @@ A Flask backend that holds the crew and jobs data and exposes it three ways:
 - **AI agent** (`POST /api/agent`): plain-English requests handled by Claude (`claude-opus-5-5`) using the staff tools.
 - **Voice / SIP** (`/voice/*`): staff call in from a desk phone, softphone, PBX or mobile and talk to Jarvis. See [docs/SIP.md](docs/SIP.md).
 - **Email** (Outlook / Microsoft 365, or Gmail and other IMAP hosts): check and summarise the inbox, turn emails into jobs, draft replies. Jarvis only drafts; you send. See [docs/EMAIL.md](docs/EMAIL.md).
+- **Access levels**: give someone scheduling-only rights (jobs, crew, clashes) with their own key. See [docs/ACCESS.md](docs/ACCESS.md).
 - **Keeps me updated**: a morning brief, checks through the day that only send when something changed, and an evening wrap-up, by WhatsApp, SMS or email. See [docs/UPDATES.md](docs/UPDATES.md).
 - **Outlook calendar**: jobs sync both ways with your calendar, and Jarvis reads your meetings and books your time.
 
@@ -55,6 +56,7 @@ curl "localhost:5000/api/day-sheet?day=today" -H "$H"   # WhatsApp group text
 | `GET /api/day-sheet`, `PUT /api/settings/whatsapp-group` | WhatsApp day message and group link |
 | `POST /api/agent` | `{message, history}` sent to Claude |
 | `POST /api/desk-note` | Daily manager briefing |
+| `POST/GET/DELETE /api/keys` | Personal API keys with admin / scheduler / crew access (see docs/ACCESS.md) |
 | `GET /api/sip`, `GET /api/calls` | SIP config (extensions, webhooks) and voice call log |
 | `/api/email/...` | Inbox, read, drafts, send (see docs/EMAIL.md) |
 | `/api/calendar...` | Your meetings, book time, two-way sync |

@@ -20,7 +20,17 @@ CREATE TABLE IF NOT EXISTS staff (
     email TEXT,
     sip_ext TEXT,
     is_manager INTEGER DEFAULT 0,
-    active INTEGER DEFAULT 1
+    active INTEGER DEFAULT 1,
+    access TEXT
+);
+CREATE TABLE IF NOT EXISTS api_keys (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    staff_id INTEGER NOT NULL REFERENCES staff(id),
+    key_hash TEXT NOT NULL UNIQUE,
+    label TEXT,
+    created TEXT NOT NULL,
+    last_used TEXT,
+    revoked INTEGER DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS jobs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -89,6 +99,9 @@ def init_db():
         cols = {r["name"] for r in c.execute("PRAGMA table_info(jobs)")}
         if "outlook_event_id" not in cols:
             c.execute("ALTER TABLE jobs ADD COLUMN outlook_event_id TEXT")
+        cols = {r["name"] for r in c.execute("PRAGMA table_info(staff)")}
+        if "access" not in cols:
+            c.execute("ALTER TABLE staff ADD COLUMN access TEXT")
 
 
 def _rows(cur):
@@ -149,21 +162,45 @@ def staff_by_phone(phone):
     return None
 
 
-def add_staff(name, role="crew", phone=None, email=None, sip_ext=None, is_manager=False):
+ACCESS_LEVELS = ("admin", "scheduler", "crew")
+
+
+def access_of(staff):
+    """admin = everything; scheduler = jobs and scheduling only; crew = read + own job status.
+    None (the master JARVIS_API_KEY or the system itself) is admin."""
+    if staff is None:
+        return "admin"
+    level = staff.get("access")
+    if level in ACCESS_LEVELS:
+        return level
+    return "admin" if staff.get("is_manager") else "crew"
+
+
+def add_staff(name, role="crew", phone=None, email=None, sip_ext=None, is_manager=False, access=None):
+    if access is None:
+        access = "admin" if is_manager else "crew"
+    if access not in ACCESS_LEVELS:
+        raise ValueError(f"access must be one of {ACCESS_LEVELS}")
     with conn() as c:
         cur = c.execute(
-            "INSERT INTO staff (name, role, phone, email, sip_ext, is_manager) VALUES (?,?,?,?,?,?)",
-            (name, role, phone, email, sip_ext, 1 if is_manager else 0),
+            "INSERT INTO staff (name, role, phone, email, sip_ext, is_manager, access) VALUES (?,?,?,?,?,?,?)",
+            (name, role, phone, email, sip_ext, 1 if access == "admin" else 0, access),
         )
         sid = cur.lastrowid
     return get_staff(sid)
 
 
-STAFF_FIELDS = {"name", "role", "phone", "email", "sip_ext", "is_manager", "active"}
+STAFF_FIELDS = {"name", "role", "phone", "email", "sip_ext", "is_manager", "active", "access"}
 
 
 def update_staff(staff_id, **fields):
     fields = {k: v for k, v in fields.items() if k in STAFF_FIELDS and v is not None}
+    if "access" in fields:
+        if fields["access"] not in ACCESS_LEVELS:
+            raise ValueError(f"access must be one of {ACCESS_LEVELS}")
+        fields["is_manager"] = 1 if fields["access"] == "admin" else 0
+    elif "is_manager" in fields:
+        fields["access"] = "admin" if fields["is_manager"] else "crew"
     if fields:
         sets = ", ".join(f"{k}=?" for k in fields)
         with conn() as c:
@@ -306,3 +343,47 @@ def log_activity(kind, text):
 def activity_since(last_id=0):
     with conn() as c:
         return _rows(c.execute("SELECT * FROM activity WHERE id>? ORDER BY id", (last_id,)))
+
+
+# ---------- per-person API keys ----------
+
+def _hash_key(key):
+    import hashlib
+    return hashlib.sha256(key.encode()).hexdigest()
+
+
+def create_api_key(staff_id, label=None):
+    """Returns the plain key once; only its hash is stored."""
+    import secrets
+    key = "jv_" + secrets.token_urlsafe(32)
+    with conn() as c:
+        c.execute("INSERT INTO api_keys (staff_id, key_hash, label, created) VALUES (?,?,?,?)",
+                  (staff_id, _hash_key(key), label, _now()))
+        kid = c.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+    return kid, key
+
+
+def staff_for_key(key):
+    """Active staff member owning a live key, or None."""
+    if not key:
+        return None
+    with conn() as c:
+        r = c.execute("SELECT k.id AS key_id, s.* FROM api_keys k JOIN staff s ON s.id=k.staff_id "
+                      "WHERE k.key_hash=? AND k.revoked=0 AND s.active=1", (_hash_key(key),)).fetchone()
+        if not r:
+            return None
+        c.execute("UPDATE api_keys SET last_used=? WHERE id=?", (_now(), r["key_id"]))
+    staff = dict(r)
+    staff.pop("key_id", None)
+    return staff
+
+
+def list_api_keys():
+    with conn() as c:
+        return _rows(c.execute("SELECT k.id, k.label, k.created, k.last_used, k.revoked, s.name AS staff, "
+                               "s.id AS staff_id FROM api_keys k JOIN staff s ON s.id=k.staff_id ORDER BY k.id"))
+
+
+def revoke_api_key(key_id):
+    with conn() as c:
+        return c.execute("UPDATE api_keys SET revoked=1 WHERE id=?", (key_id,)).rowcount > 0

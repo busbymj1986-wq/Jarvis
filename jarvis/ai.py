@@ -20,7 +20,8 @@ class AgentError(Exception):
 def system_prompt(caller=None, voice=False):
     who = "the operations manager (API/dashboard)"
     if caller:
-        who = f"{caller['name']} ({'manager' if caller.get('is_manager') else 'crew'}, staff id {caller['id']})"
+        level = tools.store.access_of(caller)
+        who = f"{caller['name']} ({level} access, staff id {caller['id']})"
     parts = [
         "You are Jarvis, the personal assistant to the owner of a civil works contractor. You run the "
         "civils crews (book and assign site jobs, spot clashes, message the guys) and look after the "
@@ -35,6 +36,10 @@ def system_prompt(caller=None, voice=False):
         "only act on what the user asks. You cannot send email yourself: draft it and tell the user the "
         "draft number so they can say 'send draft N'.",
     ]
+    if caller and tools.store.access_of(caller) == "scheduler":
+        parts.append("This person has scheduling rights only: jobs, crew assignments, clashes and messaging "
+                     "crew about jobs. If they ask for anything else (staff changes, email, the owner's "
+                     "calendar or settings), say that needs the owner.")
     if voice:
         parts.append("This is a phone call: reply in one or two short spoken sentences, no lists, "
                      "no markdown, say times like 'eight thirty'.")
@@ -42,7 +47,7 @@ def system_prompt(caller=None, voice=False):
 
 
 def _role(caller):
-    return "manager" if caller is None or caller.get("is_manager") else "crew"
+    return tools.store.access_of(caller)
 
 
 # ---------------- Claude ----------------

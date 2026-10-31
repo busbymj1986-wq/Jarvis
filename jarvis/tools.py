@@ -1,6 +1,7 @@
 """Staff, email and calendar tools for the Claude agent (chat, API and voice line).
 
-Tools are defined once (name, description, JSON schema) and filtered by role. `execute_tool` runs them against the store and returns a
+Tools are defined once (name, description, JSON schema) and filtered by access level
+(admin / scheduler / crew, see store.access_of). `execute_tool` runs them against the store and returns a
 JSON string result. Crew callers only get read tools plus status updates on
 their own jobs; managers get everything.
 """
@@ -19,6 +20,10 @@ def _obj(props, required=()):
     return {"type": "object", "properties": props, "required": list(required), "additionalProperties": False}
 
 
+ALL = ("admin", "scheduler", "crew")
+SCHED = ("admin", "scheduler")   # scheduling rights
+ADMIN = ("admin",)
+
 _STR = {"type": "string"}
 _INT = {"type": "integer"}
 _STAFF = {"type": "string", "description": "Staff member name (partial ok) or numeric id"}
@@ -29,33 +34,37 @@ TOOLS = [
         "name": "list_staff",
         "description": "List active staff (crew) with role, phone and SIP extension.",
         "schema": _obj({}),
-        "crew_ok": True,
+        "access": ALL,
     },
     {
         "name": "list_jobs",
         "description": "List jobs, optionally for one day (YYYY-MM-DD) and/or one staff member. "
                        "Use day='today' for today.",
         "schema": _obj({"day": _STR, "staff": _STAFF}),
-        "crew_ok": True,
+        "access": ALL,
     },
     {
         "name": "check_clashes",
         "description": "Check whether a staff member is already booked between start and end.",
         "schema": _obj({"staff": _STAFF, "start": _TIME, "end": _TIME}, ["staff", "start", "end"]),
-        "crew_ok": True,
+        "access": ALL,
     },
     {
         "name": "add_staff",
         "description": "Add a new staff member.",
         "schema": _obj({"name": _STR, "role": _STR, "phone": _STR, "email": _STR,
                         "sip_ext": {"type": "string", "description": "SIP extension, e.g. 201"},
-                        "is_manager": {"type": "boolean"}}, ["name"]),
+                        "is_manager": {"type": "boolean"},
+                        "access": {"type": "string", "enum": ["admin", "scheduler", "crew"],
+                                   "description": "admin = everything; scheduler = book/move/assign jobs only; "
+                                                  "crew = see jobs, update own job status"}}, ["name"]),
     },
     {
         "name": "update_staff",
         "description": "Change a staff member's details, or set active=false to remove them from the roster.",
         "schema": _obj({"staff": _STAFF, "name": _STR, "role": _STR, "phone": _STR, "email": _STR,
-                        "sip_ext": _STR, "is_manager": {"type": "boolean"}, "active": {"type": "boolean"}},
+                        "sip_ext": _STR, "is_manager": {"type": "boolean"}, "active": {"type": "boolean"},
+                        "access": {"type": "string", "enum": ["admin", "scheduler", "crew"]}},
                        ["staff"]),
     },
     {
@@ -65,35 +74,39 @@ TOOLS = [
         "schema": _obj({"title": _STR, "start": _TIME, "end": _TIME, "customer": _STR, "address": _STR,
                         "staff": _STAFF, "notes": _STR, "force": {"type": "boolean"}},
                        ["title", "start", "end"]),
+        "access": SCHED,
     },
     {
         "name": "assign_job",
         "description": "Assign (or reassign) a job to a staff member. Refuses on a clash unless force=true.",
         "schema": _obj({"job_id": _INT, "staff": _STAFF, "force": {"type": "boolean"}}, ["job_id", "staff"]),
+        "access": SCHED,
     },
     {
         "name": "reschedule_job",
         "description": "Move a job to a new start/end time. Refuses on a clash unless force=true.",
         "schema": _obj({"job_id": _INT, "start": _TIME, "end": _TIME, "force": {"type": "boolean"}},
                        ["job_id", "start", "end"]),
+        "access": SCHED,
     },
     {
         "name": "update_job_status",
         "description": "Set a job's status: " + ", ".join(JOB_STATUSES) + ". Crew may only update their own jobs.",
         "schema": _obj({"job_id": _INT, "status": {"type": "string", "enum": JOB_STATUSES}, "notes": _STR},
                        ["job_id", "status"]),
-        "crew_ok": True,
+        "access": ALL,
     },
     {
         "name": "notify_staff",
         "description": "Send an SMS to a staff member (via Twilio if configured).",
         "schema": _obj({"staff": _STAFF, "message": _STR}, ["staff", "message"]),
+        "access": SCHED,
     },
     {
         "name": "day_sheet",
         "description": "Build the WhatsApp group message for a day's jobs (who, when, where) plus the group link.",
         "schema": _obj({"day": _STR}),
-        "crew_ok": True,
+        "access": ALL,
     },
 ]
 
@@ -156,13 +169,18 @@ TOOLS += [
 _BY_NAME = {t["name"]: t for t in TOOLS}
 
 
-def tools_for(role):
+def allowed(spec, level):
+    return level in spec.get("access", ADMIN)
+
+
+def tools_for(level):
+    level = "admin" if level == "manager" else level
     has_mail, has_cal = mail.configured(), calendar_sync.configured()
-    return [t for t in TOOLS if (role == "manager" or t.get("crew_ok"))
+    return [t for t in TOOLS if allowed(t, level)
             and (has_mail or not t.get("email")) and (has_cal or not t.get("calendar"))]
 
 
-def claude_tools(role="manager"):
+def claude_tools(role="admin"):
     return [{"name": t["name"], "description": t["description"], "input_schema": t["schema"], "strict": True}
             for t in tools_for(role)]
 
@@ -244,13 +262,13 @@ SYNCS_JOB = {"create_job", "assign_job", "reschedule_job", "update_job_status"}
 def execute_tool(name, args, caller=None):
     """Run a tool. `caller` is the staff dict of whoever is asking (None = API/manager)."""
     args = args or {}
-    role = "manager" if caller is None or caller.get("is_manager") else "crew"
+    role = store.access_of(caller)
     spec = _BY_NAME.get(name)
     try:
         if not spec:
             raise ToolError(f"Unknown tool {name}")
-        if role != "manager" and not spec.get("crew_ok"):
-            raise ToolError("Only managers can do that.")
+        if not allowed(spec, role):
+            raise ToolError("You don't have access to that." if role == "scheduler" else "Only managers can do that.")
         result = _run(name, args, caller, role)
         _record(name, result, caller)
         if name in SYNCS_JOB and isinstance(result, dict) and result.get("job"):
@@ -265,7 +283,8 @@ def execute_tool(name, args, caller=None):
 
 def _run(name, a, caller, role):
     if name == "list_staff":
-        return [{k: s[k] for k in ("id", "name", "role", "phone", "sip_ext", "is_manager")} for s in store.list_staff()]
+        return [{**{k: s[k] for k in ("id", "name", "role", "phone", "sip_ext")}, "access": store.access_of(s)}
+                for s in store.list_staff()]
 
     if name == "list_jobs":
         sid = _staff(a["staff"])["id"] if a.get("staff") else None
@@ -277,12 +296,14 @@ def _run(name, a, caller, role):
         return {"staff": s["name"], "free": not found, "clashes": found}
 
     if name == "add_staff":
-        return {"ok": True, "staff": store.add_staff(a["name"], a.get("role") or ("manager" if a.get("is_manager") else "crew"), a.get("phone"),
-                                                     a.get("email"), a.get("sip_ext"), a.get("is_manager", False))}
+        access = a.get("access") or ("admin" if a.get("is_manager") else "crew")
+        role_name = a.get("role") or {"admin": "manager", "scheduler": "scheduler"}.get(access, "crew")
+        return {"ok": True, "staff": store.add_staff(a["name"], role_name, a.get("phone"), a.get("email"),
+                                                     a.get("sip_ext"), access=access)}
 
     if name == "update_staff":
         s = _staff(a["staff"])
-        fields = {k: a[k] for k in ("name", "role", "phone", "email", "sip_ext") if a.get(k) is not None}
+        fields = {k: a[k] for k in ("name", "role", "phone", "email", "sip_ext", "access") if a.get(k) is not None}
         for k in ("is_manager", "active"):
             if k in a:
                 fields[k] = 1 if a[k] else 0
@@ -318,7 +339,7 @@ def _run(name, a, caller, role):
 
     if name == "update_job_status":
         j = _job(a["job_id"])
-        if role != "manager" and j["staff_id"] != caller["id"]:
+        if role == "crew" and j["staff_id"] != caller["id"]:
             raise ToolError("You can only update your own jobs.")
         if a["status"] not in JOB_STATUSES:
             raise ToolError(f"Status must be one of {JOB_STATUSES}")

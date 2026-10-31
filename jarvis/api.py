@@ -1,33 +1,70 @@
 """REST API for managing staff and jobs, and for talking to the Claude agent.
 
-All routes need `Authorization: Bearer $JARVIS_API_KEY` (or `X-API-Key`).
+Auth: `Authorization: Bearer <key>` (or `X-API-Key`). The key is either the master
+JARVIS_API_KEY (full admin) or a personal key made with POST /api/keys, which carries that
+person's access level:
+  admin     - everything
+  scheduler - jobs and scheduling only (see SCHEDULER_ROUTES)
+  crew      - read jobs and talk to the agent (own job status only)
 """
 import hmac
 import json
 import os
 from datetime import datetime
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 
 from . import ai, calendar_sync, mail, store, tools, updates
 
 bp = Blueprint("manage", __name__, url_prefix="/api")
 
 
+RANK = {"crew": 0, "scheduler": 1, "admin": 2}
+CREW_ROUTES = {"jobs_list", "agent"}
+SCHEDULER_ROUTES = CREW_ROUTES | {"staff_list", "jobs_add", "jobs_update", "day_sheet", "activity"}
+
+
+def _given_key():
+    return request.headers.get("X-API-Key") or request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+
+
+def resolve_caller():
+    """(ok, staff) for the request's key. staff is None for the master key (full admin)."""
+    given = _given_key()
+    master = os.environ.get("JARVIS_API_KEY")
+    if not given:
+        return False, None
+    if master and hmac.compare_digest(given, master):
+        return True, None
+    staff = store.staff_for_key(given)
+    return (True, staff) if staff else (False, None)
+
+
 def authorized():
-    key = os.environ.get("JARVIS_API_KEY")
-    if not key:
-        return False
-    given = request.headers.get("X-API-Key") or request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-    return hmac.compare_digest(given, key)
+    """True only for the master key (used by the legacy demo endpoint)."""
+    ok, staff = resolve_caller()
+    return ok and staff is None
+
+
+def _needed(endpoint):
+    name = (endpoint or "").split(".")[-1]
+    if name in CREW_ROUTES:
+        return "crew"
+    if name in SCHEDULER_ROUTES:
+        return "scheduler"
+    return "admin"
 
 
 @bp.before_request
 def _auth():
     if not os.environ.get("JARVIS_API_KEY"):
         return jsonify({"error": "Set JARVIS_API_KEY on the server to enable the management API"}), 503
-    if not authorized():
+    ok, staff = resolve_caller()
+    if not ok:
         return jsonify({"error": "unauthorized"}), 401
+    g.caller, g.level = staff, store.access_of(staff)
+    if RANK[g.level] < RANK[_needed(request.endpoint)]:
+        return jsonify({"error": f"your access level ({g.level}) can't use this"}), 403
 
 
 def _body():
@@ -35,7 +72,7 @@ def _body():
 
 
 def _tool(name, args):
-    out, is_error = tools.execute_tool(name, args)
+    out, is_error = tools.execute_tool(name, args, g.get("caller"))
     data = json.loads(out)
     if is_error:
         return jsonify(data), 400
@@ -121,6 +158,8 @@ def agent():
         return jsonify({"error": "message is required"}), 400
     # "send draft 3" is handled here in code so an email can never trick the model into sending.
     is_send, draft_id = mail.parse_send_command(b["message"])
+    if is_send and g.level != "admin":
+        return jsonify({"reply": "Only the owner can send emails.", "actions": []}), 403
     if is_send:
         if draft_id is None:
             return jsonify({"reply": "Which draft? Say 'send draft' and the number.", "actions": []})
@@ -128,7 +167,7 @@ def agent():
     history = [{"role": h["role"], "content": str(h["content"])} for h in b.get("history", [])
                if h.get("role") in ("user", "assistant")]
     try:
-        return jsonify(ai.run_agent(b["message"], history=history))
+        return jsonify(ai.run_agent(b["message"], history=history, caller=g.caller))
     except ai.AgentError as e:
         return jsonify({"error": str(e)}), 502
 
@@ -259,4 +298,31 @@ def updates_run():
 
 @bp.get("/activity")
 def activity():
-    return jsonify(store.activity_since(int(request.args.get("since", 0)))[-200:])
+    rows = store.activity_since(int(request.args.get("since", 0)))
+    if g.level != "admin":
+        rows = [r for r in rows if r["kind"] == "job"]
+    return jsonify(rows[-200:])
+
+
+# ---- personal API keys (admin) ----
+
+@bp.post("/keys")
+def keys_create():
+    """Body: {"staff": name or id, "label": "Lerato's laptop"}. The key is shown once."""
+    b = _body()
+    staff = store.find_staff(b.get("staff"))
+    if not staff:
+        return jsonify({"error": "staff member not found"}), 404
+    key_id, key = store.create_api_key(staff["id"], b.get("label"))
+    return jsonify({"id": key_id, "key": key, "staff": staff["name"], "access": store.access_of(staff),
+                    "note": "Copy this key now; it is not shown again."})
+
+
+@bp.get("/keys")
+def keys_list():
+    return jsonify(store.list_api_keys())
+
+
+@bp.delete("/keys/<int:key_id>")
+def keys_revoke(key_id):
+    return (jsonify({"ok": True}), 200) if store.revoke_api_key(key_id) else (jsonify({"error": "not found"}), 404)
