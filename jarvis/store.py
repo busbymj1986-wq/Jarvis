@@ -37,6 +37,18 @@ CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT
 );
+CREATE TABLE IF NOT EXISTS email_drafts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    created TEXT NOT NULL,
+    to_addr TEXT NOT NULL,
+    cc TEXT,
+    subject TEXT NOT NULL,
+    body TEXT NOT NULL,
+    reply_to_id TEXT,
+    status TEXT DEFAULT 'draft',
+    sent_at TEXT,
+    error TEXT
+);
 CREATE TABLE IF NOT EXISTS call_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     at TEXT NOT NULL,
@@ -238,3 +250,35 @@ def log_call(call_sid, caller, heard, reply, provider):
 def recent_calls(limit=50):
     with conn() as c:
         return _rows(c.execute("SELECT * FROM call_log ORDER BY id DESC LIMIT ?", (limit,)))
+
+
+# ---------- email drafts (Jarvis drafts, a human approves the send) ----------
+
+def _now():
+    return datetime.now(timezone.utc).replace(tzinfo=None).isoformat(timespec="seconds")
+
+
+def add_draft(to_addr, subject, body, cc=None, reply_to_id=None):
+    with conn() as c:
+        cur = c.execute("INSERT INTO email_drafts (created, to_addr, cc, subject, body, reply_to_id) "
+                        "VALUES (?,?,?,?,?,?)", (_now(), to_addr, cc, subject, body, reply_to_id))
+        did = cur.lastrowid
+    return get_draft(did)
+
+
+def get_draft(draft_id):
+    with conn() as c:
+        r = c.execute("SELECT * FROM email_drafts WHERE id=?", (draft_id,)).fetchone()
+        return dict(r) if r else None
+
+
+def list_drafts(status="draft"):
+    with conn() as c:
+        return _rows(c.execute("SELECT * FROM email_drafts WHERE status=? ORDER BY id DESC", (status,)))
+
+
+def mark_draft(draft_id, status, error=None):
+    with conn() as c:
+        c.execute("UPDATE email_drafts SET status=?, error=?, sent_at=? WHERE id=?",
+                  (status, error, _now() if status == "sent" else None, draft_id))
+    return get_draft(draft_id)

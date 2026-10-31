@@ -1,10 +1,11 @@
-# Jarvis: staff management through Claude, Grok and a SIP voice line
+# Jarvis: a PA for running civils crews and your email, through Claude, Grok and a SIP voice line
 
 A Flask backend that holds the crew and jobs data and exposes it three ways:
 
 - **REST API** (`/api/*`) for the phone app or a dashboard.
 - **AI agent** (`POST /api/agent`): plain-English requests handled by Claude (`claude-opus-5-5`) or Grok (`grok-4`) using the same staff tools.
 - **Voice / SIP** (`/voice/*`): staff call in from a desk phone, softphone, PBX or mobile and talk to Jarvis. See [docs/SIP.md](docs/SIP.md).
+- **Email** (Outlook / Microsoft 365, or Gmail and other IMAP hosts): check and summarise the inbox, turn emails into jobs, draft replies. Jarvis only drafts; you send. See [docs/EMAIL.md](docs/EMAIL.md).
 
 ## Layout
 
@@ -15,6 +16,7 @@ A Flask backend that holds the crew and jobs data and exposes it three ways:
 | `jarvis/tools.py` | Staff tools, defined once and exported for Claude and Grok, with manager/crew permissions |
 | `jarvis/ai.py` | Claude and Grok tool-use loops, plus the desk note |
 | `jarvis/api.py` | REST endpoints (Bearer `JARVIS_API_KEY`) |
+| `jarvis/mail.py` | Inbox reading (Graph or IMAP) and sending approved drafts (Graph or SMTP) |
 | `jarvis/voice.py` | Twilio voice webhooks: caller ID/SIP extension lookup, speech to agent, call transfer |
 | `tests/` | `python -m pytest -q` |
 
@@ -48,3 +50,4 @@ curl "localhost:5000/api/day-sheet?day=today" -H "$H"   # WhatsApp group text
 | `POST /api/agent` | `{message, provider, history}` sent to Claude or Grok |
 | `POST /api/desk-note` | Daily manager briefing |
 | `GET /api/sip`, `GET /api/calls` | SIP config (extensions, webhooks) and voice call log |
+| `/api/email/...` | Inbox, read, drafts, send (see docs/EMAIL.md) |

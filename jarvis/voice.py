@@ -12,13 +12,14 @@ from xml.sax.saxutils import escape, quoteattr
 
 from flask import Blueprint, Response, abort, request
 
-from . import ai, store
+from . import ai, mail, store
 
 bp = Blueprint("voice", __name__, url_prefix="/voice")
 
 VOICE = os.environ.get("TWILIO_VOICE", "Polly.Ayanda-Neural")
 LANG = os.environ.get("VOICE_LANGUAGE", "en-ZA")
 _histories = OrderedDict()   # CallSid -> [{"role":..., "content":...}]
+_last_draft = {}             # CallSid -> id of the last email drafted on this call
 _MAX_CALLS = 200
 HANGUP_WORDS = ("goodbye", "bye", "that's all", "hang up", "end call")
 TRANSFER_RE = re.compile(r"\b(?:transfer|put me through|connect me)\s+(?:me\s+)?(?:to\s+)?(.+)", re.I)
@@ -118,6 +119,24 @@ def gather():
         _histories.pop(call_sid, None)
         return _twiml(_say("Cheers, goodbye.") + "<Hangup/>")
 
+    # Sending email is decided here in code, never by the model: only a manager saying
+    # "send it" (last draft on this call) or "send draft 3" sends anything.
+    is_send, draft_id = mail.parse_send_command(heard)
+    if is_send:
+        if not (caller and caller.get("is_manager")):
+            reply = "Only a manager can send emails."
+        elif (draft_id or _last_draft.get(call_sid)) is None:
+            reply = "There's no draft to send yet. Which draft number?"
+        else:
+            draft_id = draft_id or _last_draft.get(call_sid)
+            try:
+                d = mail.send_draft(draft_id)
+                reply = f"Sent to {d['to_addr'].split('<')[0].strip() or d['to_addr']}."
+            except mail.MailError as e:
+                reply = f"I couldn't send it. {e}"
+        store.log_call(call_sid, request.form.get("From"), heard, reply, "email")
+        return _twiml(_gather(reply + " Anything else?") + "<Hangup/>")
+
     m = TRANSFER_RE.match(low)
     if m:
         target = store.find_staff(m.group(1).strip(" ."))
@@ -134,6 +153,9 @@ def gather():
     try:
         result = ai.run_agent(heard, provider=provider, history=history, caller=as_caller, voice=True)
         reply = result["reply"] or "Done."
+        for act in result.get("actions", []):
+            if act["tool"] == "draft_email" and act["result"].get("draft_id"):
+                _last_draft[call_sid] = act["result"]["draft_id"]
     except ai.AgentError:
         reply = "Sorry, my brain is offline right now. Please try again in a minute."
     history += [{"role": "user", "content": heard}, {"role": "assistant", "content": reply}]
@@ -146,4 +168,5 @@ def status():
     _validate()
     if request.form.get("CallStatus") in ("completed", "failed", "busy", "no-answer", "canceled"):
         _histories.pop(request.form.get("CallSid", ""), None)
+        _last_draft.pop(request.form.get("CallSid", ""), None)
     return ("", 204)

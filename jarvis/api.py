@@ -8,7 +8,7 @@ import os
 
 from flask import Blueprint, jsonify, request
 
-from . import ai, store, tools
+from . import ai, mail, store, tools
 
 bp = Blueprint("manage", __name__, url_prefix="/api")
 
@@ -118,6 +118,12 @@ def agent():
     b = _body()
     if not b.get("message"):
         return jsonify({"error": "message is required"}), 400
+    # "send draft 3" is handled here in code so an email can never trick the model into sending.
+    is_send, draft_id = mail.parse_send_command(b["message"])
+    if is_send:
+        if draft_id is None:
+            return jsonify({"reply": "Which draft? Say 'send draft' and the number.", "actions": []})
+        return _send_draft(draft_id)
     history = [{"role": h["role"], "content": str(h["content"])} for h in b.get("history", [])
                if h.get("role") in ("user", "assistant")]
     try:
@@ -156,3 +162,53 @@ def sip_info():
 @bp.get("/calls")
 def calls():
     return jsonify(store.recent_calls(int(request.args.get("limit", 50))))
+
+
+# ---- email ----
+
+def _mail_call(fn, *args):
+    try:
+        return jsonify(fn(*args))
+    except mail.MailError as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@bp.get("/email/inbox")
+def email_inbox():
+    return _mail_call(mail.list_messages, request.args.get("all") != "1",
+                      int(request.args.get("limit", 10)), request.args.get("q"))
+
+
+@bp.get("/email/message/<path:msg_id>")
+def email_read(msg_id):
+    return _mail_call(mail.read_message, msg_id)
+
+
+@bp.get("/email/drafts")
+def email_drafts():
+    return jsonify(store.list_drafts(request.args.get("status", "draft")))
+
+
+@bp.post("/email/drafts")
+def email_draft_create():
+    return _tool("draft_email", _body())
+
+
+def _send_draft(draft_id):
+    try:
+        d = mail.send_draft(draft_id)
+    except mail.MailError as e:
+        return jsonify({"reply": f"Couldn't send draft {draft_id}: {e}", "error": str(e)}), 400
+    return jsonify({"reply": f"Sent draft {d['id']} to {d['to_addr']}.", "draft": d, "actions": []})
+
+
+@bp.post("/email/drafts/<int:draft_id>/send")
+def email_send(draft_id):
+    return _send_draft(draft_id)
+
+
+@bp.delete("/email/drafts/<int:draft_id>")
+def email_discard(draft_id):
+    if not store.get_draft(draft_id):
+        return jsonify({"error": "not found"}), 404
+    return jsonify(store.mark_draft(draft_id, "discarded"))
