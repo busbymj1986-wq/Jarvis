@@ -171,3 +171,29 @@ def desk_note(day="today", provider="grok"):
               "who is working where, unassigned jobs, clashes or gaps, and anyone with nothing booked."
               f"{email_part} Plain text, under 180 words. Do not change any data or draft emails.")
     return run_agent(prompt, provider=provider)
+
+
+def quick_text(prompt, provider=None, system="You are Jarvis, a concise PA for a civils contractor."):
+    """One-shot text answer, no tools (used for triaging new emails)."""
+    provider = (provider or default_provider()).lower()
+    if provider == "grok":
+        key = os.environ.get("XAI_API_KEY")
+        if not key:
+            raise AgentError("XAI_API_KEY is not set")
+        r = requests.post(XAI_URL, timeout=60, headers={"Authorization": f"Bearer {key}"},
+                          json={"model": GROK_MODEL, "messages": [{"role": "system", "content": system},
+                                                                  {"role": "user", "content": prompt}]})
+        if r.status_code >= 400:
+            raise AgentError(f"xAI API error {r.status_code}")
+        return (r.json()["choices"][0]["message"].get("content") or "").strip()
+    import anthropic
+    try:
+        resp = _claude().beta.messages.create(
+            model=CLAUDE_MODEL, max_tokens=2000, system=system,
+            messages=[{"role": "user", "content": prompt}], output_config={"effort": "low"},
+            betas=["server-side-fallback-2026-07-01"], fallbacks="default")
+    except (anthropic.APIStatusError, anthropic.APIConnectionError) as e:
+        raise AgentError(f"Claude API error: {e}") from e
+    if resp.stop_reason == "refusal":
+        return ""
+    return " ".join(b.text for b in resp.content if b.type == "text").strip()

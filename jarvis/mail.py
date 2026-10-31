@@ -264,3 +264,15 @@ def parse_send_command(text):
     if not m:
         return False, None
     return True, int(m.group(1)) if m.group(1) else None
+
+
+def send_to_self(subject, body):
+    """Email the owner their own update. Recipient is fixed to the owner's mailbox."""
+    if backend() == "graph":
+        me = os.environ["MS_MAILBOX"]
+        _graph("POST", "/sendMail", json={"message": {
+            "subject": subject, "body": {"contentType": "Text", "content": body},
+            "toRecipients": [{"emailAddress": {"address": me}}]}, "saveToSentItems": False})
+    else:
+        me = os.environ.get("MAIL_USER")
+        _smtp_send({"to_addr": me, "subject": subject, "body": body, "reply_to_id": None})

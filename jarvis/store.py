@@ -49,6 +49,12 @@ CREATE TABLE IF NOT EXISTS email_drafts (
     sent_at TEXT,
     error TEXT
 );
+CREATE TABLE IF NOT EXISTS activity (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    at TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    text TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS call_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     at TEXT NOT NULL,
@@ -288,3 +294,15 @@ def mark_draft(draft_id, status, error=None):
         c.execute("UPDATE email_drafts SET status=?, error=?, sent_at=? WHERE id=?",
                   (status, error, _now() if status == "sent" else None, draft_id))
     return get_draft(draft_id)
+
+
+# ---------- activity feed (what changed, for the owner's updates) ----------
+
+def log_activity(kind, text):
+    with conn() as c:
+        c.execute("INSERT INTO activity (at, kind, text) VALUES (?,?,?)", (_now(), kind, text))
+
+
+def activity_since(last_id=0):
+    with conn() as c:
+        return _rows(c.execute("SELECT * FROM activity WHERE id>? ORDER BY id", (last_id,)))

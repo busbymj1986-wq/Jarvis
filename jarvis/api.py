@@ -9,7 +9,7 @@ from datetime import datetime
 
 from flask import Blueprint, jsonify, request
 
-from . import ai, calendar_sync, mail, store, tools
+from . import ai, calendar_sync, mail, store, tools, updates
 
 bp = Blueprint("manage", __name__, url_prefix="/api")
 
@@ -242,3 +242,22 @@ def calendar_sync_now():
                 datetime.now()).isoformat(timespec="minutes"):
             pushed.append({"job_id": job["id"], "outlook": calendar_sync.push_job(job)})
     return jsonify({"pulled": pulled, "pushed": pushed})
+
+
+# ---- keep-me-updated ----
+
+@bp.post("/updates/run")
+def updates_run():
+    """Body: {"kind": "morning" | "check" | "evening"}. Point a cron service here if not using JARVIS_SCHEDULER."""
+    kind = _body().get("kind", "check")
+    if kind not in updates.RUNNERS:
+        return jsonify({"error": "kind must be morning, check or evening"}), 400
+    try:
+        return jsonify({"kind": kind, "result": updates.RUNNERS[kind]()})
+    except ai.AgentError as e:
+        return jsonify({"error": str(e)}), 502
+
+
+@bp.get("/activity")
+def activity():
+    return jsonify(store.activity_since(int(request.args.get("since", 0)))[-200:])

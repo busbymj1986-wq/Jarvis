@@ -1,4 +1,6 @@
-# Jarvis: a PA for running civils crews, your email and your Outlook calendar, through Claude, Grok and a SIP voice line
+# Jarvis: my personal planning system
+
+A PA that runs the civils crews, watches my email and Outlook calendar, and keeps me up to date, through Claude, Grok, WhatsApp/SMS/email and a SIP voice line.
 
 A Flask backend that holds the crew and jobs data and exposes it three ways:
 
@@ -6,6 +8,7 @@ A Flask backend that holds the crew and jobs data and exposes it three ways:
 - **AI agent** (`POST /api/agent`): plain-English requests handled by Claude (`claude-opus-5-5`) or Grok (`grok-4`) using the same staff tools.
 - **Voice / SIP** (`/voice/*`): staff call in from a desk phone, softphone, PBX or mobile and talk to Jarvis. See [docs/SIP.md](docs/SIP.md).
 - **Email** (Outlook / Microsoft 365, or Gmail and other IMAP hosts): check and summarise the inbox, turn emails into jobs, draft replies. Jarvis only drafts; you send. See [docs/EMAIL.md](docs/EMAIL.md).
+- **Keeps me updated**: a morning brief, checks through the day that only send when something changed, and an evening wrap-up, by WhatsApp, SMS or email. See [docs/UPDATES.md](docs/UPDATES.md).
 - **Outlook calendar**: jobs sync both ways with your calendar, and Jarvis reads your meetings and books your time.
 
 ## Layout
@@ -19,6 +22,7 @@ A Flask backend that holds the crew and jobs data and exposes it three ways:
 | `jarvis/api.py` | REST endpoints (Bearer `JARVIS_API_KEY`) |
 | `jarvis/mail.py` | Inbox reading (Graph or IMAP) and sending approved drafts (Graph or SMTP) |
 | `jarvis/calendar_sync.py` | Outlook calendar: jobs to events, pull moves back, your meetings |
+| `jarvis/updates.py`, `jarvis/notify.py` | Morning brief, change checks, evening wrap, scheduler; delivery by WhatsApp/SMS/email |
 | `jarvis/voice.py` | Twilio voice webhooks: caller ID/SIP extension lookup, speech to agent, call transfer |
 | `tests/` | `python -m pytest -q` |
 
@@ -54,3 +58,4 @@ curl "localhost:5000/api/day-sheet?day=today" -H "$H"   # WhatsApp group text
 | `GET /api/sip`, `GET /api/calls` | SIP config (extensions, webhooks) and voice call log |
 | `/api/email/...` | Inbox, read, drafts, send (see docs/EMAIL.md) |
 | `/api/calendar...` | Your meetings, book time, two-way sync |
+| `POST /api/updates/run`, `GET /api/activity` | Run a brief/check/wrap now; everything that changed |

@@ -231,6 +231,21 @@ def day_sheet_text(day):
     return "\n".join(lines)
 
 
+def _record(name, result, caller):
+    if not (isinstance(result, dict) and result.get("ok")):
+        return
+    who = caller["name"] if caller else "Jarvis"
+    job = result.get("job")
+    if job and name in ("create_job", "assign_job", "reschedule_job", "update_job_status"):
+        staff = store.get_staff(job["staff_id"]) if job.get("staff_id") else None
+        crew = staff["name"] if staff else "unassigned"
+        what = {"create_job": "booked", "assign_job": f"given to {crew}",
+                "reschedule_job": f"moved to {job['start']}", "update_job_status": f"now {job['status']}"}[name]
+        store.log_activity("job", f"#{job['id']} {job['title']} ({crew}) {what} — by {who}")
+    elif name in ("add_staff", "update_staff") and result.get("staff"):
+        store.log_activity("staff", f"{result['staff']['name']} {'added' if name == 'add_staff' else 'updated'} — by {who}")
+
+
 SYNCS_JOB = {"create_job", "assign_job", "reschedule_job", "update_job_status"}
 
 
@@ -245,6 +260,7 @@ def execute_tool(name, args, caller=None):
         if role != "manager" and not spec.get("crew_ok"):
             raise ToolError("Only managers can do that.")
         result = _run(name, args, caller, role)
+        _record(name, result, caller)
         if name in SYNCS_JOB and isinstance(result, dict) and result.get("job"):
             status = calendar_sync.push_job(result["job"])
             if status:

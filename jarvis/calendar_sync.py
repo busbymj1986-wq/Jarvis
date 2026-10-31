@@ -170,4 +170,6 @@ def pull_changes(day=None, days=14):
             clash = store.clashes(job["staff_id"], new_start, new_end, ignore_job_id=job["id"])
             changes.append({"job_id": job["id"], "change": f"moved to {new_start}–{new_end[11:]}",
                             "clash_with": [c["id"] for c in clash]})
+            store.log_activity("job", f"#{job['id']} {job['title']} moved in Outlook to {new_start}"
+                                      + (f" — CLASHES with job {', '.join(str(c['id']) for c in clash)}" if clash else ""))
     return changes

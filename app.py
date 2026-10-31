@@ -2,7 +2,7 @@ from flask import Flask, request, jsonify
 from datetime import datetime
 import os
 
-from jarvis import ai, store
+from jarvis import ai, store, updates
 from jarvis.api import bp as api_bp, authorized
 from jarvis.voice import bp as voice_bp
 
@@ -10,6 +10,7 @@ app = Flask(__name__)
 store.init_db()
 app.register_blueprint(api_bp)
 app.register_blueprint(voice_bp)
+updates.start_scheduler()  # only runs when JARVIS_SCHEDULER=1
 
 state = {
     "status": "Active",
