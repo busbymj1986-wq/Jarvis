@@ -114,6 +114,6 @@ $batText = "@echo off`r`ntitle Jarvis`r`ncd /d `"$Folder`"`r`nstart `"`" /min cm
 Say "Added 'Start Jarvis' to your Desktop. Double-click it any time to start Jarvis."
 
 # 6. Start -------------------------------------------------------------------
-Say "Starting Jarvis at http://localhost:5000 - leave this window open. Press Ctrl+C to stop."
+Say "Starting Jarvis at http://localhost:5000 - log in with your Jarvis password. Leave this window open; Ctrl+C stops it."
 Start-Job -ScriptBlock { Start-Sleep -Seconds 4; Start-Process "http://localhost:5000" } | Out-Null
 & $venvPython app.py

@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from datetime import datetime
 import os
 
@@ -104,14 +104,29 @@ def api_voice():
             return jsonify({"error": str(e)}), 502
     return jsonify({"error": "unknown command", "heard": cmd})
 
-@app.route("/")
-def index():
+@app.route("/health")
+def health():
     return jsonify({
         "service": "Jarvis Flask Backend",
         "status": "online",
         "agent": ai.CLAUDE_MODEL,
         "voice_webhook": "/voice/incoming",
     })
+
+
+@app.route("/")
+def index():
+    """The chat page. It holds no data itself: everything goes through /api with the user's key."""
+    if request.accept_mimetypes.best == "application/json":
+        return health()
+    resp = send_from_directory(os.path.join(app.root_path, "jarvis", "static"), "index.html")
+    resp.headers["Content-Security-Policy"] = (
+        "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    resp.headers["Referrer-Policy"] = "no-referrer"
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))

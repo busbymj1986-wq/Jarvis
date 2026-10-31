@@ -20,7 +20,7 @@ bp = Blueprint("manage", __name__, url_prefix="/api")
 
 
 RANK = {"crew": 0, "scheduler": 1, "admin": 2}
-CREW_ROUTES = {"jobs_list", "agent"}
+CREW_ROUTES = {"jobs_list", "agent", "me"}
 SCHEDULER_ROUTES = CREW_ROUTES | {"staff_list", "jobs_add", "jobs_update", "day_sheet", "activity"}
 
 
@@ -302,6 +302,18 @@ def activity():
     if g.level != "admin":
         rows = [r for r in rows if r["kind"] == "job"]
     return jsonify(rows[-200:])
+
+
+@bp.get("/me")
+def me():
+    """Who the key belongs to and what they can do (drives the chat page)."""
+    caller = g.caller
+    return jsonify({
+        "name": caller["name"] if caller else "Owner",
+        "access": g.level,
+        "email": mail.configured() and g.level == "admin",
+        "calendar": calendar_sync.configured() and g.level == "admin",
+    })
 
 
 # ---- personal API keys (admin) ----

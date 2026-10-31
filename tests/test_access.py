@@ -99,3 +99,23 @@ def test_existing_managers_still_admin(client):
     legacy = dict(old, access=None)  # rows from before the access column
     assert store.access_of(legacy) == "admin"
     assert json.loads(tools.execute_tool("add_staff", {"name": "New"}, caller=old)[0])["ok"]
+
+
+def test_chat_page_and_me(client):
+    r = client.get("/")
+    assert r.status_code == 200 and b"<title>Jarvis</title>" in r.data
+    assert "frame-ancestors 'none'" in r.headers["Content-Security-Policy"]
+    assert client.get("/health").json["status"] == "online"
+    assert client.get("/", headers={"Accept": "application/json"}).json["status"] == "online"
+    assert client.get("/api/me").status_code == 401
+    assert client.get("/api/me", headers=AUTH).json["access"] == "admin"
+    lerato, _, S, C, _ = setup_people(client)
+    assert client.get("/api/me", headers=S).json == {"name": "Lerato Scheduler", "access": "scheduler",
+                                                     "email": False, "calendar": False}
+    assert client.get("/api/me", headers=C).json["access"] == "crew"
+
+
+def test_page_never_injects_html():
+    import re
+    src = open("jarvis/static/index.html").read()
+    assert "innerHTML" not in src and "insertAdjacentHTML" not in src and not re.search(r"\beval\(", src)
