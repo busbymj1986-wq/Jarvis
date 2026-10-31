@@ -211,8 +211,14 @@
     $("app").classList.remove("hidden");
     $("who").textContent = `${me.name} · ${me.access}`;
     buildQuick();
+    $("composer").classList.toggle("hidden", !me.chat);
     $("msgs").textContent = "";
-    if (history.length) {
+    if (!me.chat) {
+      addMsg("jarvis", "To chat with Jarvis, use the Claude app on this computer: press the Windows key, " +
+        "type Claude and press Enter, then ask it things like “Book Sipho for kerbs at Main Rd tomorrow 7 to 3”.\n\n" +
+        "This page shows today's jobs, your crew and emails waiting to send" +
+        (me.access === "admin" ? ", and the Morning brief button below works too." : "."));
+    } else if (history.length) {
       history.forEach((h) => addMsg(h.role === "user" ? "me" : "jarvis", h.content));
     } else {
       const h = new Date().getHours();
@@ -228,6 +234,17 @@
   }
 
   function buildQuick() {
+    if (!me.chat) {
+      const box = $("quick");
+      box.textContent = "";
+      if (me.access === "admin") {
+        const b = el("button", "", "Morning brief");
+        b.type = "button";
+        b.addEventListener("click", brief);
+        box.appendChild(b);
+      }
+      return;
+    }
     const q = [["What's on today?", "What jobs are on today and who's on them?"],
                ["Who's free tomorrow?", "Which crew have nothing booked tomorrow?"],
                ["Unassigned jobs", "List any jobs this week with no crew."]];

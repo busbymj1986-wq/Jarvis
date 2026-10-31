@@ -110,8 +110,8 @@ def test_chat_page_and_me(client):
     assert client.get("/api/me").status_code == 401
     assert client.get("/api/me", headers=AUTH).json["access"] == "admin"
     lerato, _, S, C, _ = setup_people(client)
-    assert client.get("/api/me", headers=S).json == {"name": "Lerato Scheduler", "access": "scheduler",
-                                                     "email": False, "calendar": False}
+    me = client.get("/api/me", headers=S).json
+    assert (me["name"], me["access"], me["email"], me["calendar"]) == ("Lerato Scheduler", "scheduler", False, False)
     assert client.get("/api/me", headers=C).json["access"] == "crew"
 
 
@@ -119,3 +119,15 @@ def test_page_never_injects_html():
     import re
     src = open("jarvis/static/index.html").read()
     assert "innerHTML" not in src and "insertAdjacentHTML" not in src and not re.search(r"\beval\(", src)
+
+
+def test_page_knows_when_chat_is_unavailable(client, monkeypatch):
+    for k in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"):
+        monkeypatch.delenv(k, raising=False)
+    assert client.get("/api/me", headers=AUTH).json["chat"] is False
+    from jarvis import ai
+    monkeypatch.setattr(ai, "desk_note", lambda day: (_ for _ in ()).throw(ai.AgentError("no key")))
+    r = client.post("/api/desk-note", headers=AUTH, json={})
+    assert r.status_code == 200 and "Crew plan" in r.json["reply"]
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
+    assert client.get("/api/me", headers=AUTH).json["chat"] is True

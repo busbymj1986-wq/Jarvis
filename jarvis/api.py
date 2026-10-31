@@ -177,8 +177,10 @@ def desk_note():
     b = _body()
     try:
         return jsonify(ai.desk_note(b.get("day", "today")))
-    except ai.AgentError as e:
-        return jsonify({"error": str(e)}), 502
+    except ai.AgentError:
+        day = b.get("day")
+        return jsonify({"reply": updates.plain_brief(None if day in (None, "today") else day), "actions": [],
+                        "agent": "plain"})
 
 
 # ---- SIP / voice ----
@@ -313,6 +315,7 @@ def me():
         "access": g.level,
         "email": mail.configured() and g.level == "admin",
         "calendar": calendar_sync.configured() and g.level == "admin",
+        "chat": bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")),
     })
 
 
