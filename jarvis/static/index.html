@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Jarvis</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --line: #262b36; --text: #e8eaef; --muted: #8b93a4;
+    --me: #2563eb; --jarvis: #1f2430; --ok: #22c55e; --warn: #f59e0b; --bad: #ef4444; --accent: #f59e0b;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg: #f4f5f7; --panel: #ffffff; --line: #e3e6eb; --text: #14171f; --muted: #626b7c;
+            --me: #2563eb; --jarvis: #eef0f4; }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  button { font: inherit; cursor: pointer; }
+  .hidden { display: none !important; }
+
+  /* login */
+  #login { height: 100%; display: grid; place-items: center; padding: 20px; }
+  #login form { width: 100%; max-width: 360px; background: var(--panel); border: 1px solid var(--line);
+                border-radius: 14px; padding: 28px; }
+  #login h1 { margin: 0 0 4px; font-size: 26px; }
+  #login p { margin: 0 0 18px; color: var(--muted); }
+  #login input { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid var(--line);
+                 background: var(--bg); color: var(--text); font-size: 16px; }
+  #login button { width: 100%; margin-top: 12px; padding: 12px; border: 0; border-radius: 10px;
+                  background: var(--accent); color: #111; font-weight: 600; }
+  #loginErr { color: var(--bad); min-height: 1.4em; margin-top: 10px; }
+
+  /* layout */
+  #app { height: 100%; display: grid; grid-template-columns: minmax(0, 1fr) 340px; grid-template-rows: auto minmax(0, 1fr); }
+  header { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; padding: 10px 16px;
+           border-bottom: 1px solid var(--line); background: var(--panel); }
+  header .logo { font-weight: 700; font-size: 18px; }
+  header .who { color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  header .spacer { flex: 1; }
+  header button { flex: none; background: none; border: 1px solid var(--line); color: var(--text); border-radius: 8px; padding: 6px 10px; }
+  #panelToggle { display: none; }
+
+  #chat { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+  #msgs { flex: 1; overflow-y: auto; padding: 18px 16px; display: flex; flex-direction: column; gap: 10px; }
+  .msg { max-width: min(680px, 88%); padding: 10px 13px; border-radius: 14px; white-space: pre-wrap; word-wrap: break-word; }
+  .msg.me { align-self: flex-end; background: var(--me); color: #fff; border-bottom-right-radius: 4px; }
+  .msg.jarvis { align-self: flex-start; background: var(--jarvis); border-bottom-left-radius: 4px; }
+  .msg.error { align-self: flex-start; background: transparent; border: 1px solid var(--bad); color: var(--bad); }
+  .msg .acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .chip { font-size: 12px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+  .chip.ok { border-color: var(--ok); color: var(--ok); }
+  .chip.bad { border-color: var(--bad); color: var(--bad); }
+  .msg .sendbtn { margin-top: 8px; padding: 6px 12px; border: 0; border-radius: 8px; background: var(--accent); color: #111; font-weight: 600; }
+  .typing { align-self: flex-start; color: var(--muted); font-style: italic; padding: 4px 8px; }
+
+  #quick { display: flex; gap: 8px; padding: 0 16px 8px; overflow-x: auto; }
+  #quick button { white-space: nowrap; background: var(--panel); border: 1px solid var(--line); color: var(--text);
+                  border-radius: 999px; padding: 6px 12px; font-size: 13px; }
+  #composer { display: flex; gap: 8px; padding: 10px 16px 14px; border-top: 1px solid var(--line); background: var(--panel); }
+  #input { flex: 1; min-width: 0; resize: none; max-height: 140px; padding: 11px 12px; border-radius: 12px; border: 1px solid var(--line);
+           background: var(--bg); color: var(--text); font: inherit; }
+  #composer button { flex: none; border: 0; border-radius: 12px; padding: 0 16px; font-weight: 600; }
+  #send { background: var(--accent); color: #111; }
+  #mic { background: var(--jarvis); color: var(--text); font-size: 18px; }
+  #mic.on { background: var(--bad); color: #fff; }
+
+  /* side panel */
+  aside { border-left: 1px solid var(--line); background: var(--panel); overflow-y: auto; padding: 14px; }
+  aside h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 16px 0 8px; }
+  aside h2:first-child { margin-top: 0; }
+  .card { border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px; margin-bottom: 8px; }
+  .card .t { font-weight: 600; }
+  .card .s { color: var(--muted); font-size: 13px; }
+  .badge { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--line); margin-left: 6px; }
+  .badge.done { border-color: var(--ok); color: var(--ok); }
+  .badge.on_site, .badge.en_route { border-color: var(--warn); color: var(--warn); }
+  .badge.unassigned { border-color: var(--bad); color: var(--bad); }
+  .empty { color: var(--muted); font-size: 13px; }
+  .card .row { display: flex; gap: 6px; margin-top: 6px; }
+  .card .row button { font-size: 12px; padding: 3px 9px; border-radius: 7px; border: 1px solid var(--line); background: none; color: var(--text); }
+  .card .row button.primary { background: var(--accent); border-color: var(--accent); color: #111; font-weight: 600; }
+  .speak { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); margin-top: 14px; }
+
+  @media (max-width: 860px) {
+    #app { grid-template-columns: minmax(0, 1fr); }
+    header { gap: 8px; padding: 10px 12px; }
+    header button { padding: 6px 8px; font-size: 14px; }
+    #composer { padding: 8px 10px calc(10px + env(safe-area-inset-bottom)); }
+    #composer button { padding: 0 12px; }
+    #quick { padding: 0 10px 8px; }
+    #msgs { padding: 14px 10px; }
+    aside { position: fixed; inset: 53px 0 0 auto; width: min(360px, 92vw); z-index: 5; box-shadow: -8px 0 24px rgba(0,0,0,.3);
+            transform: translateX(100%); transition: transform .2s; }
+    aside.open { transform: none; }
+    #panelToggle { display: inline-block; }
+  }
+</style>
+</head>
+<body>
+
+<section id="login">
+  <form id="loginForm" autocomplete="off">
+    <h1>Jarvis</h1>
+    <p>Your crews, email and calendar in one chat.</p>
+    <input id="key" type="password" placeholder="Jarvis password or personal key" autofocus>
+    <label class="speak"><input type="checkbox" id="remember" checked> Remember me on this computer</label>
+    <button type="submit">Log in</button>
+    <div id="loginErr"></div>
+  </form>
+</section>
+
+<section id="app" class="hidden">
+  <header>
+    <span class="logo">Jarvis</span>
+    <span class="who" id="who"></span>
+    <span class="spacer"></span>
+    <button id="newChat" title="Start a fresh conversation">New</button>
+    <button id="panelToggle">Today</button>
+    <button id="logout">Log out</button>
+  </header>
+
+  <main id="chat">
+    <div id="msgs"></div>
+    <div id="quick"></div>
+    <form id="composer">
+      <textarea id="input" rows="1" placeholder="Ask Jarvis… e.g. Book Sipho for kerbs at Main Rd tomorrow 7 to 3"></textarea>
+      <button type="button" id="mic" title="Talk to Jarvis">🎤</button>
+      <button type="submit" id="send">Send</button>
+    </form>
+  </main>
+
+  <aside id="panel">
+    <h2>Today's jobs</h2>
+    <div id="jobs"><div class="empty">Loading…</div></div>
+    <div id="draftsBox" class="hidden">
+      <h2>Emails waiting for you</h2>
+      <div id="drafts"></div>
+    </div>
+    <h2>Crew</h2>
+    <div id="crew"><div class="empty">Loading…</div></div>
+    <label class="speak"><input type="checkbox" id="speakReplies"> Read Jarvis's replies out loud</label>
+  </aside>
+</section>
+
+<script>
+(() => {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  let key = localStorage.getItem("jarvisKey") || sessionStorage.getItem("jarvisKey") || "";
+  let me = null;
+  let history = JSON.parse(sessionStorage.getItem("jarvisHistory") || "[]");
+  let busy = false;
+
+  // ---------- helpers: data is always set as text (textContent), never parsed as HTML ----------
+  function el(tag, cls, text) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined && text !== null) e.textContent = text;
+    return e;
+  }
+
+  async function api(path, opts = {}) {
+    const res = await fetch("/api" + path, {
+      method: opts.method || "GET",
+      headers: { "Authorization": "Bearer " + key, "Content-Type": "application/json" },
+      body: opts.body ? JSON.stringify(opts.body) : undefined,
+    });
+    let data = null;
+    try { data = await res.json(); } catch (_) { /* not JSON */ }
+    if (res.status === 401) { logout("Your password was not accepted. Please log in again."); throw new Error("unauthorized"); }
+    return { ok: res.ok, status: res.status, data };
+  }
+
+  // ---------- login ----------
+  $("loginForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    key = $("key").value.trim();
+    if (!key) return;
+    $("loginErr").textContent = "Checking…";
+    try {
+      const r = await fetch("/api/me", { headers: { "Authorization": "Bearer " + key } });
+      if (r.status === 503) { $("loginErr").textContent = "Set JARVIS_API_KEY in .env and restart Jarvis."; return; }
+      if (!r.ok) { $("loginErr").textContent = "That password didn't work."; return; }
+      (($("remember").checked) ? localStorage : sessionStorage).setItem("jarvisKey", key);
+      $("key").value = "";
+      $("loginErr").textContent = "";
+      start(await r.json());
+    } catch (_) {
+      $("loginErr").textContent = "Can't reach Jarvis. Is it running?";
+    }
+  });
+
+  function logout(msg) {
+    localStorage.removeItem("jarvisKey");
+    sessionStorage.removeItem("jarvisKey");
+    sessionStorage.removeItem("jarvisHistory");
+    key = ""; me = null; history = [];
+    $("msgs").textContent = "";
+    $("app").classList.add("hidden");
+    $("login").classList.remove("hidden");
+    $("loginErr").textContent = msg || "";
+  }
+  $("logout").addEventListener("click", () => logout());
+
+  // ---------- start ----------
+  function start(profile) {
+    me = profile;
+    $("login").classList.add("hidden");
+    $("app").classList.remove("hidden");
+    $("who").textContent = `${me.name} · ${me.access}`;
+    buildQuick();
+    $("msgs").textContent = "";
+    if (history.length) {
+      history.forEach((h) => addMsg(h.role === "user" ? "me" : "jarvis", h.content));
+    } else {
+      const h = new Date().getHours();
+      const greet = h < 12 ? "Morning" : h < 17 ? "Afternoon" : "Evening";
+      const hello = me.access === "admin"
+        ? `${greet} ${me.name.split(" ")[0]}. Ask me about the crews, book or move jobs` +
+          (me.email ? ", check your email" : "") + (me.calendar ? ", or check your calendar" : "") + "."
+        : `${greet} ${me.name.split(" ")[0]}. Ask me about jobs and the crew.`;
+      addMsg("jarvis", hello);
+    }
+    refreshPanel();
+    $("input").focus();
+  }
+
+  function buildQuick() {
+    const q = [["What's on today?", "What jobs are on today and who's on them?"],
+               ["Who's free tomorrow?", "Which crew have nothing booked tomorrow?"],
+               ["Unassigned jobs", "List any jobs this week with no crew."]];
+    if (me.access === "admin") {
+      if (me.email) q.splice(1, 0, ["Urgent email?", "Anything urgent in my email?"]);
+      if (me.calendar) q.splice(1, 0, ["My meetings", "What's on my calendar today?"]);
+      q.unshift(["Morning brief", "__brief__"]);
+    }
+    const box = $("quick");
+    box.textContent = "";
+    q.forEach(([label, text]) => {
+      const b = el("button", "", label);
+      b.type = "button";
+      b.addEventListener("click", () => (text === "__brief__" ? brief() : send(text)));
+      box.appendChild(b);
+    });
+  }
+
+  // ---------- chat ----------
+  function addMsg(who, text, extras) {
+    const m = el("div", "msg " + who, text);
+    if (extras && extras.actions && extras.actions.length) {
+      const acts = el("div", "acts");
+      extras.actions.forEach((a) => {
+        const r = a.result || {};
+        const failed = r.ok === false || r.error;
+        acts.appendChild(el("span", "chip " + (failed ? "bad" : "ok"), (failed ? "✗ " : "✓ ") + a.tool.replace(/_/g, " ")));
+        if (a.tool === "draft_email" && r.draft_id) {
+          const b = el("button", "sendbtn", `Send draft ${r.draft_id} to ${r.to}`);
+          b.type = "button";
+          b.addEventListener("click", () => { b.disabled = true; send(`send draft ${r.draft_id}`); });
+          m.appendChild(acts);
+          m.appendChild(b);
+        }
+      });
+      if (!m.contains(acts)) m.appendChild(acts);
+    }
+    $("msgs").appendChild(m);
+    $("msgs").scrollTop = $("msgs").scrollHeight;
+    return m;
+  }
+
+  function remember(role, content) {
+    history.push({ role, content });
+    history = history.slice(-20);
+    sessionStorage.setItem("jarvisHistory", JSON.stringify(history));
+  }
+
+  async function send(text) {
+    text = (text || "").trim();
+    if (!text || busy) return;
+    busy = true;
+    $("send").disabled = true;
+    addMsg("me", text);
+    const typing = el("div", "typing", "Jarvis is working on it…");
+    $("msgs").appendChild(typing);
+    $("msgs").scrollTop = $("msgs").scrollHeight;
+    try {
+      const r = await api("/agent", { method: "POST", body: { message: text, history } });
+      typing.remove();
+      const d = r.data || {};
+      if (!r.ok && !d.reply) {
+        addMsg("error", d.error || `Something went wrong (${r.status}).`);
+      } else {
+        addMsg("jarvis", d.reply || "Done.", d);
+        remember("user", text);
+        remember("assistant", d.reply || "Done.");
+        speak(d.reply);
+      }
+    } catch (err) {
+      typing.remove();
+      if (err.message !== "unauthorized") addMsg("error", "Can't reach Jarvis. Is it still running?");
+    } finally {
+      busy = false;
+      $("send").disabled = false;
+      refreshPanel();
+    }
+  }
+
+  async function brief() {
+    if (busy) return;
+    busy = true;
+    addMsg("me", "Morning brief");
+    const typing = el("div", "typing", "Putting your brief together…");
+    $("msgs").appendChild(typing);
+    try {
+      const r = await api("/desk-note", { method: "POST", body: {} });
+      typing.remove();
+      const d = r.data || {};
+      r.ok ? (addMsg("jarvis", d.reply, d), speak(d.reply)) : addMsg("error", d.error || "Couldn't build the brief.");
+    } catch (_) { typing.remove(); }
+    busy = false;
+  }
+
+  $("composer").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const t = $("input").value;
+    $("input").value = "";
+    autosize();
+    send(t);
+  });
+  $("input").addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("composer").requestSubmit(); }
+  });
+  function autosize() { const i = $("input"); i.style.height = "auto"; i.style.height = Math.min(i.scrollHeight, 140) + "px"; }
+  $("input").addEventListener("input", autosize);
+
+  $("newChat").addEventListener("click", () => {
+    history = [];
+    sessionStorage.removeItem("jarvisHistory");
+    $("msgs").textContent = "";
+    addMsg("jarvis", "Fresh start. What do you need?");
+  });
+
+  // ---------- side panel ----------
+  async function refreshPanel() {
+    if (!me) return;
+    const [jobs, crew] = await Promise.all([api("/jobs?day=today"), api("/staff")]).catch(() => [null, null]);
+    const names = {};
+    const crewBox = $("crew");
+    crewBox.textContent = "";
+    if (crew && crew.ok) {
+      crew.data.forEach((s) => (names[s.id] = s.name));
+      if (!crew.data.length) crewBox.appendChild(el("div", "empty", "No crew yet. Try: “Add Sipho to the crew, 082 222 0000”."));
+      crew.data.forEach((s) => {
+        const c = el("div", "card");
+        const t = el("div", "t", s.name);
+        t.appendChild(el("span", "badge", s.access || s.role));
+        c.appendChild(t);
+        const bits = [s.role, s.phone, s.sip_ext ? "ext " + s.sip_ext : ""].filter(Boolean);
+        c.appendChild(el("div", "s", bits.join(" · ")));
+        crewBox.appendChild(c);
+      });
+    } else {
+      crewBox.appendChild(el("div", "empty", "Crew list not available for your access level."));
+    }
+
+    const jobsBox = $("jobs");
+    jobsBox.textContent = "";
+    const list = (jobs && jobs.ok && Array.isArray(jobs.data)) ? jobs.data.filter((j) => j.status !== "cancelled") : [];
+    if (!list.length) jobsBox.appendChild(el("div", "empty", "Nothing booked today."));
+    list.forEach((j) => {
+      const c = el("div", "card");
+      const t = el("div", "t", `${j.start.slice(11, 16)}–${j.end.slice(11, 16)}  ${j.title}`);
+      const who = j.staff_id ? (names[j.staff_id] || "crew #" + j.staff_id) : null;
+      t.appendChild(el("span", "badge " + (who ? j.status : "unassigned"), who ? j.status.replace("_", " ") : "no crew"));
+      c.appendChild(t);
+      c.appendChild(el("div", "s", [who, j.address, j.customer].filter(Boolean).join(" · ") || `Job #${j.id}`));
+      jobsBox.appendChild(c);
+    });
+
+    if (me.access === "admin" && me.email) {
+      const d = await api("/email/drafts").catch(() => null);
+      const box = $("drafts");
+      box.textContent = "";
+      const drafts = d && d.ok ? d.data : [];
+      $("draftsBox").classList.toggle("hidden", !drafts.length);
+      drafts.forEach((dr) => {
+        const c = el("div", "card");
+        c.appendChild(el("div", "t", dr.subject));
+        c.appendChild(el("div", "s", "To " + dr.to_addr));
+        const body = el("div", "s", dr.body.length > 220 ? dr.body.slice(0, 220) + "…" : dr.body);
+        body.style.whiteSpace = "pre-wrap";
+        body.style.marginTop = "6px";
+        c.appendChild(body);
+        const row = el("div", "row");
+        const sendB = el("button", "primary", "Send");
+        sendB.addEventListener("click", () => { sendB.disabled = true; send(`send draft ${dr.id}`); });
+        const del = el("button", "", "Discard");
+        del.addEventListener("click", async () => { await api(`/email/drafts/${dr.id}`, { method: "DELETE" }); refreshPanel(); });
+        row.append(sendB, del);
+        c.appendChild(row);
+        box.appendChild(c);
+      });
+    }
+  }
+  setInterval(() => { if (me && !document.hidden) refreshPanel(); }, 60000);
+  $("panelToggle").addEventListener("click", () => $("panel").classList.toggle("open"));
+
+  // ---------- voice: talk and listen (Chrome / Edge) ----------
+  const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let rec = null;
+  if (!Rec) {
+    $("mic").title = "Voice input needs Chrome or Edge";
+    $("mic").disabled = true;
+    $("mic").style.opacity = 0.4;
+  }
+  $("mic").addEventListener("click", () => {
+    if (!Rec) return;
+    if (rec) { rec.stop(); return; }
+    rec = new Rec();
+    rec.lang = "en-ZA";
+    rec.interimResults = true;
+    let finalText = "";
+    $("mic").classList.add("on");
+    rec.onresult = (e) => {
+      let interim = "";
+      for (const r of e.results) (r.isFinal ? (finalText = r[0].transcript) : (interim += r[0].transcript));
+      $("input").value = finalText || interim;
+    };
+    rec.onend = () => {
+      $("mic").classList.remove("on");
+      rec = null;
+      if (finalText.trim()) { $("input").value = ""; send(finalText); }
+    };
+    rec.onerror = () => { $("mic").classList.remove("on"); rec = null; };
+    rec.start();
+  });
+
+  $("speakReplies").checked = localStorage.getItem("jarvisSpeak") === "1";
+  $("speakReplies").addEventListener("change", (e) => localStorage.setItem("jarvisSpeak", e.target.checked ? "1" : "0"));
+  function speak(text) {
+    if (!text || !$("speakReplies").checked || !window.speechSynthesis) return;
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = "en-ZA";
+    speechSynthesis.speak(u);
+  }
+
+  // ---------- auto-login ----------
+  if (key) {
+    fetch("/api/me", { headers: { "Authorization": "Bearer " + key } })
+      .then((r) => (r.ok ? r.json().then(start) : logout()))
+      .catch(() => { $("loginErr").textContent = "Can't reach Jarvis. Is it running?"; });
+  }
+})();
+</script>
+</body>
+</html>

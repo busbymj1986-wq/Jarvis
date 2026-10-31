@@ -4,7 +4,8 @@ A PA that runs the civils crews, watches my email and Outlook calendar, and keep
 
 A Flask backend that holds the crew and jobs data and exposes it three ways:
 
-- **REST API** (`/api/*`) for the phone app or a dashboard.
+- **Chat page** at http://localhost:5000 (or your server address): log in with your Jarvis password or personal key, chat with Claude (typing or the mic button), and see today's jobs, crew and email drafts waiting to send. Works on a phone too.
+- **REST API** (`/api/*`) for the phone app or a dashboard. `GET /health` returns the server status.
 - **AI agent** (`POST /api/agent`): plain-English requests handled by Claude (`claude-opus-5-5`) using the staff tools.
 - **Voice / SIP** (`/voice/*`): staff call in from a desk phone, softphone, PBX or mobile and talk to Jarvis. See [docs/SIP.md](docs/SIP.md).
 - **Email** (Outlook / Microsoft 365, or Gmail and other IMAP hosts): check and summarise the inbox, turn emails into jobs, draft replies. Jarvis only drafts; you send. See [docs/EMAIL.md](docs/EMAIL.md).
@@ -20,6 +21,7 @@ A Flask backend that holds the crew and jobs data and exposes it three ways:
 | `jarvis/store.py` | SQLite store: staff, jobs, settings (WhatsApp group link), call log, clash detection |
 | `jarvis/tools.py` | Staff tools, defined once and with manager/crew permissions |
 | `jarvis/ai.py` | Claude tool-use loop, the desk note and email triage |
+| `jarvis/static/index.html` | The chat page (no build step, plain HTML/JS) |
 | `jarvis/api.py` | REST endpoints (Bearer `JARVIS_API_KEY`) |
 | `jarvis/mail.py` | Inbox reading (Graph or IMAP) and sending approved drafts (Graph or SMTP) |
 | `jarvis/calendar_sync.py` | Outlook calendar: jobs to events, pull moves back, your meetings |
@@ -53,7 +55,7 @@ Run the same line again any time to update Jarvis. Your settings and data are ke
    ```
 3. Open `.env` in Notepad and set at least `JARVIS_API_KEY` (any long password) and `ANTHROPIC_API_KEY`.
    Leave the other settings blank until you need them.
-4. Start it with `python app.py`, then open http://localhost:5000. You should see `"status": "online"`.
+4. Start it with `python app.py`, then open http://localhost:5000 and log in with your `JARVIS_API_KEY`.
 
 Your data is saved in `jarvis.db` in the same folder. Stop the server with Ctrl+C. Next time, just activate the venv and run `python app.py`.
 
