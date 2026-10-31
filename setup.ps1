@@ -113,7 +113,40 @@ $batText = "@echo off`r`ntitle Jarvis`r`ncd /d `"$Folder`"`r`nstart `"`" /min cm
 [IO.File]::WriteAllText($bat, $batText, (New-Object System.Text.ASCIIEncoding))
 Say "Added 'Start Jarvis' to your Desktop. Double-click it any time to start Jarvis."
 
-# 6. Start -------------------------------------------------------------------
+# 6. Plug Jarvis into Claude Desktop (uses your Claude subscription, no API key) ----
+function Add-JarvisToClaudeDesktop($configDir) {
+    New-Item -ItemType Directory -Force -Path $configDir | Out-Null
+    $configFile = Join-Path $configDir "claude_desktop_config.json"
+    $config = New-Object PSObject
+    if (Test-Path $configFile) {
+        Copy-Item $configFile "$configFile.bak" -Force
+        $raw = [IO.File]::ReadAllText($configFile)
+        if ($raw.Trim()) { $config = $raw | ConvertFrom-Json }
+    }
+    if (-not ($config.PSObject.Properties.Name -contains "mcpServers")) {
+        $config | Add-Member -NotePropertyName mcpServers -NotePropertyValue (New-Object PSObject)
+    }
+    $entry = [PSCustomObject]@{ command = $venvPython; args = @((Join-Path $Folder "jarvis\mcp_server.py")) }
+    if ($config.mcpServers.PSObject.Properties.Name -contains "jarvis") {
+        $config.mcpServers.jarvis = $entry
+    } else {
+        $config.mcpServers | Add-Member -NotePropertyName jarvis -NotePropertyValue $entry
+    }
+    [IO.File]::WriteAllText($configFile, ($config | ConvertTo-Json -Depth 20), $utf8)
+    return $configFile
+}
+try {
+    $done = @(Add-JarvisToClaudeDesktop (Join-Path $env:APPDATA "Claude"))
+    # Microsoft Store installs of Claude keep their settings inside the app package.
+    Get-ChildItem (Join-Path $env:LOCALAPPDATA "Packages") -Directory -Filter "Claude_*" -ErrorAction SilentlyContinue |
+        ForEach-Object { $done += Add-JarvisToClaudeDesktop (Join-Path $_.FullName "LocalCache\Roaming\Claude") }
+    Say "Connected Jarvis to Claude Desktop ($($done -join ', ')). Fully quit Claude Desktop (right-click its icon by the clock -> Quit) and open it again."
+} catch {
+    Write-Host "Couldn't update Claude Desktop's settings automatically: $_" -ForegroundColor Yellow
+    Write-Host "See docs\CLAUDE_DESKTOP.md in $Folder to add it by hand."
+}
+
+# 7. Start -------------------------------------------------------------------
 Say "Starting Jarvis at http://localhost:5000 - log in with your Jarvis password. Leave this window open; Ctrl+C stops it."
 Start-Job -ScriptBlock { Start-Sleep -Seconds 4; Start-Process "http://localhost:5000" } | Out-Null
 & $venvPython app.py
