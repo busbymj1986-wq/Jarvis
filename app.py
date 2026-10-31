@@ -2,7 +2,15 @@ from flask import Flask, request, jsonify
 from datetime import datetime
 import os
 
+from jarvis import ai, store, updates
+from jarvis.api import bp as api_bp, authorized
+from jarvis.voice import bp as voice_bp
+
 app = Flask(__name__)
+store.init_db()
+app.register_blueprint(api_bp)
+app.register_blueprint(voice_bp)
+updates.start_scheduler()  # only runs when JARVIS_SCHEDULER=1
 
 state = {
     "status": "Active",
@@ -82,11 +90,22 @@ def api_voice():
         return api_reset()
     if "sms" in cmd or "message" in cmd:
         return api_sms()
+    # Anything else is a staff-management request for Claude (needs the API key).
+    if cmd and authorized():
+        try:
+            return jsonify(ai.run_agent(cmd, voice=True))
+        except ai.AgentError as e:
+            return jsonify({"error": str(e)}), 502
     return jsonify({"error": "unknown command", "heard": cmd})
 
 @app.route("/")
 def index():
-    return jsonify({"service": "Jarvis Flask Backend", "status": "online"})
+    return jsonify({
+        "service": "Jarvis Flask Backend",
+        "status": "online",
+        "agent": ai.CLAUDE_MODEL,
+        "voice_webhook": "/voice/incoming",
+    })
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
