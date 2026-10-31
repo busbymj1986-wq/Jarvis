@@ -114,3 +114,20 @@ def test_imap_parsing_keeps_unread_and_strips_html():
     out = mail._imap_fetch(FakeIMAP(), "7", full=True)
     assert out["unread"] and out["subject"] == "Site visit" and out["message_id"] == "<abc@x>"
     assert out["body"] == "Meet at gate 3"
+
+
+def test_outlook_is_default_when_ms_settings_present(monkeypatch):
+    monkeypatch.delenv("MAIL_BACKEND", raising=False)
+    monkeypatch.setenv("MS_CLIENT_ID", "id")
+    monkeypatch.setenv("MS_MAILBOX", "boss@civils.co.za")
+    assert mail.backend() == "graph"
+
+
+def test_graph_send_reply_and_new(monkeypatch):
+    calls = []
+    monkeypatch.setattr(mail, "_graph", lambda method, path, **kw: calls.append((method, path, kw)) or {})
+    mail._graph_send({"reply_to_id": "AAMk1", "body": "On it", "to_addr": "p@x.co.za"})
+    mail._graph_send({"reply_to_id": None, "body": "Hi", "subject": "Plant", "to_addr": "Hire <h@x.co.za>", "cc": ""})
+    assert calls[0][:2] == ("POST", "/messages/AAMk1/reply") and calls[0][2]["json"] == {"comment": "On it"}
+    msg = calls[1][2]["json"]["message"]
+    assert calls[1][1] == "/sendMail" and msg["toRecipients"] == [{"emailAddress": {"address": "h@x.co.za"}}]

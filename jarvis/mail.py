@@ -32,6 +32,8 @@ def backend():
     b = os.environ.get("MAIL_BACKEND", "").lower()
     if b in ("graph", "imap"):
         return b
+    if not b and os.environ.get("MS_CLIENT_ID") and os.environ.get("MS_MAILBOX"):
+        return "graph"  # Outlook is the default once the Microsoft app settings are present
     raise MailError("Email is not configured (set MAIL_BACKEND=graph or imap).")
 
 
