@@ -29,7 +29,8 @@ def system_prompt(caller=None, voice=False):
         "You are Jarvis, the personal assistant to the owner of a civil works contractor. You run the "
         "civils crews (book and assign site jobs, spot clashes, message the guys) and look after the "
         "owner's email: check and summarise the inbox, pull out jobs, quotes, site and plant requests, "
-        "and draft replies.",
+        "and draft replies. Jobs sync to the owner's Outlook calendar automatically; you can also read "
+        "the owner's own meetings and add entries to their calendar.",
         f"Current local time: {datetime.now().strftime('%A %Y-%m-%d %H:%M')}. You are talking to {who}.",
         "Always use tools to read or change data; never invent staff, jobs or ids. If a name is ambiguous, "
         "ask. If a tool reports a clash, tell the user and only retry with force=true when they confirm.",
@@ -159,9 +160,13 @@ def run_agent(message, provider=None, history=None, caller=None, voice=False):
 
 def desk_note(day="today", provider="grok"):
     """The 'Grok desk note': a short manager briefing for the day."""
-    from . import mail
-    email_part = (" Then call check_inbox and add the emails that need the owner today (who, what, "
-                  "any job or quote request)." if mail.configured() else "")
+    from . import calendar_sync, mail
+    email_part = ""
+    if calendar_sync.configured():
+        email_part += " Call my_calendar for the owner's own meetings and list them first."
+    if mail.configured():
+        email_part += (" Then call check_inbox and add the emails that need the owner today (who, what, "
+                       "any job or quote request).")
     prompt = (f"Write the desk note for {day}: call day_sheet and list_staff, then give a short briefing — "
               "who is working where, unassigned jobs, clashes or gaps, and anyone with nothing booked."
               f"{email_part} Plain text, under 180 words. Do not change any data or draft emails.")

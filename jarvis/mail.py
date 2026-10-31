@@ -25,7 +25,9 @@ MAX_BODY = 6000
 
 
 class MailError(Exception):
-    pass
+    def __init__(self, message, status=None):
+        super().__init__(message)
+        self.status = status
 
 
 def backend():
@@ -75,14 +77,17 @@ def _graph_token():
     return _token["value"]
 
 
-def _graph(method, path, **kw):
+def _graph(method, path, headers=None, **kw):
     mailbox = os.environ.get("MS_MAILBOX")
     if not mailbox:
         raise MailError("Set MS_MAILBOX to the mailbox address Jarvis manages.")
-    r = requests.request(method, f"{GRAPH}/users/{mailbox}{path}", timeout=30,
-                         headers={"Authorization": f"Bearer {_graph_token()}"}, **kw)
+    try:
+        r = requests.request(method, f"{GRAPH}/users/{mailbox}{path}", timeout=30,
+                             headers={"Authorization": f"Bearer {_graph_token()}", **(headers or {})}, **kw)
+    except requests.RequestException as e:
+        raise MailError("Could not reach Microsoft 365") from e
     if r.status_code >= 400:
-        raise MailError(f"Outlook error {r.status_code}: {r.text[:200]}")
+        raise MailError(f"Outlook error {r.status_code}: {r.text[:200]}", status=r.status_code)
     return r.json() if r.content else {}
 
 

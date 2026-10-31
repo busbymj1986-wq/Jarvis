@@ -11,7 +11,7 @@ from datetime import date
 
 from email.utils import parseaddr
 
-from . import mail, store
+from . import calendar_sync, mail, store
 
 JOB_STATUSES = ["scheduled", "en_route", "on_site", "done", "cancelled"]
 
@@ -130,12 +130,37 @@ TOOLS += [
     },
 ]
 
+# Outlook calendar tools (managers only). Job create/move/assign/cancel also sync automatically.
+TOOLS += [
+    {
+        "name": "my_calendar",
+        "description": "The owner's own Outlook meetings for a day (YYYY-MM-DD or 'today'), optionally several days.",
+        "schema": _obj({"day": _STR, "days": _INT}),
+        "calendar": True,
+    },
+    {
+        "name": "create_meeting",
+        "description": "Put an entry (site visit, meeting, reminder) in the owner's Outlook calendar. "
+                       "No invites are sent. Check my_calendar for clashes first.",
+        "schema": _obj({"subject": _STR, "start": _TIME, "end": _TIME, "location": _STR, "notes": _STR},
+                       ["subject", "start", "end"]),
+        "calendar": True,
+    },
+    {
+        "name": "sync_outlook",
+        "description": "Pull changes made in Outlook (jobs moved or deleted there) back into Jarvis.",
+        "schema": _obj({}),
+        "calendar": True,
+    },
+]
+
 _BY_NAME = {t["name"]: t for t in TOOLS}
 
 
 def tools_for(role):
-    has_mail = mail.configured()
-    return [t for t in TOOLS if (role == "manager" or t.get("crew_ok")) and (has_mail or not t.get("email"))]
+    has_mail, has_cal = mail.configured(), calendar_sync.configured()
+    return [t for t in TOOLS if (role == "manager" or t.get("crew_ok"))
+            and (has_mail or not t.get("email")) and (has_cal or not t.get("calendar"))]
 
 
 def claude_tools(role="manager"):
@@ -206,6 +231,9 @@ def day_sheet_text(day):
     return "\n".join(lines)
 
 
+SYNCS_JOB = {"create_job", "assign_job", "reschedule_job", "update_job_status"}
+
+
 def execute_tool(name, args, caller=None):
     """Run a tool. `caller` is the staff dict of whoever is asking (None = API/manager)."""
     args = args or {}
@@ -217,6 +245,11 @@ def execute_tool(name, args, caller=None):
         if role != "manager" and not spec.get("crew_ok"):
             raise ToolError("Only managers can do that.")
         result = _run(name, args, caller, role)
+        if name in SYNCS_JOB and isinstance(result, dict) and result.get("job"):
+            status = calendar_sync.push_job(result["job"])
+            if status:
+                result["outlook"] = status
+                result["job"] = store.get_job(result["job"]["id"])
         return json.dumps(result, default=str), False
     except (ToolError, ValueError, mail.MailError) as e:
         return json.dumps({"ok": False, "error": str(e)}), True
@@ -317,5 +350,18 @@ def _run(name, a, caller, role):
 
     if name == "list_drafts":
         return [{k: d[k] for k in ("id", "to_addr", "subject", "created")} for d in store.list_drafts()]
+
+    if name == "my_calendar":
+        return calendar_sync.my_events(a.get("day"), max(1, min(int(a.get("days") or 1), 14)))
+
+    if name == "create_meeting":
+        if store.parse_time(a["end"]) <= store.parse_time(a["start"]):
+            raise ToolError("End must be after start.")
+        busy = calendar_sync.busy_between(a["start"], a["end"])
+        ev = calendar_sync.create_meeting(a["subject"], a["start"], a["end"], a.get("location"), a.get("notes"))
+        return {"ok": True, "event": ev, "overlaps": busy}
+
+    if name == "sync_outlook":
+        return {"ok": True, "changes": calendar_sync.pull_changes()}
 
     raise ToolError(f"Unhandled tool {name}")

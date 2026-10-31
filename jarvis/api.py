@@ -5,10 +5,11 @@ All routes need `Authorization: Bearer $JARVIS_API_KEY` (or `X-API-Key`).
 import hmac
 import json
 import os
+from datetime import datetime
 
 from flask import Blueprint, jsonify, request
 
-from . import ai, mail, store, tools
+from . import ai, calendar_sync, mail, store, tools
 
 bp = Blueprint("manage", __name__, url_prefix="/api")
 
@@ -212,3 +213,32 @@ def email_discard(draft_id):
     if not store.get_draft(draft_id):
         return jsonify({"error": "not found"}), 404
     return jsonify(store.mark_draft(draft_id, "discarded"))
+
+
+# ---- Outlook calendar ----
+
+@bp.get("/calendar")
+def calendar_events():
+    return _mail_call(calendar_sync.my_events, request.args.get("day"), int(request.args.get("days", 1)))
+
+
+@bp.post("/calendar/meetings")
+def calendar_meeting():
+    return _tool("create_meeting", _body())
+
+
+@bp.post("/calendar/sync")
+def calendar_sync_now():
+    """Pull Outlook moves back into Jarvis, then push any jobs not yet in Outlook."""
+    if not calendar_sync.configured():
+        return jsonify({"error": "Outlook calendar is not configured"}), 400
+    try:
+        pulled = calendar_sync.pull_changes()
+    except mail.MailError as e:
+        return jsonify({"error": str(e)}), 400
+    pushed = []
+    for job in store.list_jobs():
+        if not job.get("outlook_event_id") and job["status"] != "cancelled" and job["end"] >= store.parse_time(
+                datetime.now()).isoformat(timespec="minutes"):
+            pushed.append({"job_id": job["id"], "outlook": calendar_sync.push_job(job)})
+    return jsonify({"pulled": pulled, "pushed": pushed})

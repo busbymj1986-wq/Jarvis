@@ -80,6 +80,9 @@ def conn():
 def init_db():
     with conn() as c:
         c.executescript(SCHEMA)
+        cols = {r["name"] for r in c.execute("PRAGMA table_info(jobs)")}
+        if "outlook_event_id" not in cols:
+            c.execute("ALTER TABLE jobs ADD COLUMN outlook_event_id TEXT")
 
 
 def _rows(cur):
@@ -212,11 +215,14 @@ def add_job(title, start, end, customer=None, address=None, staff_id=None, notes
     return get_job(jid)
 
 
-JOB_FIELDS = {"title", "customer", "address", "start", "end", "staff_id", "status", "notes"}
+JOB_FIELDS = {"title", "customer", "address", "start", "end", "staff_id", "status", "notes", "outlook_event_id"}
 
 
 def update_job(job_id, **fields):
+    clear = [k for k, v in fields.items() if k == "outlook_event_id" and v == ""]
     fields = {k: v for k, v in fields.items() if k in JOB_FIELDS and v is not None}
+    for k in clear:
+        fields[k] = None
     for k in ("start", "end"):
         if k in fields:
             fields[k] = parse_time(fields[k]).isoformat(timespec="minutes")
