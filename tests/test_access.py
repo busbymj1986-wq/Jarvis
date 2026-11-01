@@ -117,7 +117,7 @@ def test_chat_page_and_me(client):
 
 def test_page_never_injects_html():
     import re
-    src = open("jarvis/static/index.html").read()
+    src = open("jarvis/static/index.html", encoding="utf-8").read()
     assert "innerHTML" not in src and "insertAdjacentHTML" not in src and not re.search(r"\beval\(", src)
 
 
