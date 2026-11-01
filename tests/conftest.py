@@ -5,6 +5,13 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# Keep tests off the real .env: its keys would reach live services and JARVIS_SCHEDULER=1
+# would start the background scheduler, which then races the tests.
+import dotenv  # noqa: E402
+
+dotenv.load_dotenv = lambda *a, **k: False
+os.environ.pop("JARVIS_SCHEDULER", None)
+
 
 @pytest.fixture()
 def client(tmp_path, monkeypatch):
